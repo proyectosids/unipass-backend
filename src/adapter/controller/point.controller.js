@@ -1,4 +1,4 @@
-import { getPointsChecksUseCase } from "../../usecases/point.usecase.js";
+import { getPointsChecksUseCase } from "../../usercases/point.usercase.js";
 
 export const getPointsChecks = async (req, res) => {
     try {

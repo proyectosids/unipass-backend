@@ -1,6 +1,7 @@
 import { getConnection } from "../../infrastructure/database/connection.js";
 import sql from "mssql";
 import User from "../../domain/models/user.js";
+import * as queries from "../../queries/auth.queries.js";
 
 export class AuthRepository {
     async getUserByMatriculaOrCorreo(matricula, correo) {
@@ -10,30 +11,27 @@ export class AuthRepository {
         if (matricula) {
             result = await pool.request()
                 .input('Matricula', sql.VarChar, matricula)
-                .query('SELECT * FROM LoginUniPass WHERE Matricula = @Matricula');
+                .query(queries.getUserByMatriculaQuery);
         } else if (correo) {
             result = await pool.request()
                 .input('Correo', sql.VarChar, correo)
-                .query('SELECT * FROM LoginUniPass WHERE Correo = @Correo');
+                .query(queries.getUserByCorreoQuery);
         } else {
             return null;
         }
 
-        if (result.recordset.length === 0) {
-            return null;
-        }
-
-        return User.fromRecord(result.recordset[0]);
+        return result.recordset.length === 0 
+            ? null 
+            : User.fromRecord(result.recordset[0]);
     }
 
     async updatePassword(correo, hashedPassword) {
         const pool = await getConnection();
-
         const result = await pool.request()
             .input("Correo", sql.VarChar, correo)
             .input("Password", sql.VarChar, hashedPassword)
             .input("TipoUser", sql.VarChar, "DEPARTAMENTO")
-            .query("UPDATE LoginUniPass SET Contraseña = @Password WHERE Correo = @Correo AND TipoUser != @TipoUser");
+            .query(queries.updatePasswordQuery);
 
         return result.rowsAffected[0] > 0;
     }
