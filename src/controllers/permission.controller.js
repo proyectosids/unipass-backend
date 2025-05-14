@@ -554,7 +554,7 @@ WHERE a.TipoUser = 'ALUMNO'
   AND a.Dormitorio = (
     SELECT Dormitorio
     FROM LoginUniPass
-    WHERE Matricula = '41' AND TipoUser = 'PRECEPTOR'
+    WHERE Matricula = @Matricula AND TipoUser = 'PRECEPTOR'
   );
             `);
 
