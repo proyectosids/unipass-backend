@@ -207,11 +207,27 @@ export const getExpedientesAlumnos = async (req, res) => {
         pool = await getConnection();
         const result = await pool.request()
         .input('IdDormitorio', sql.Int, req.params.IdDormi)
-        .query(`SELECT DISTINCT LoginUniPass.Matricula, LoginUniPass.Nombre, 
-            LoginUniPass.Apellidos FROM Doctos 
-            INNER JOIN DocumentCatalog ON DocumentCatalog.IdDocument = Doctos.IdDocumento 
-            INNER JOIN LoginUniPass ON LoginUniPass.IdLogin = Doctos.IdLogin 
-            WHERE LoginUniPass.Dormitorio = @IdDormitorio AND LoginUniPass.TipoUser = 'ALUMNO'`)
+        .query(`
+            SELECT DISTINCT 
+    L.Matricula, 
+    L.Nombre, 
+    L.Apellidos
+FROM Doctos D
+INNER JOIN DocumentCatalog DC 
+    ON DC.IdDocument = D.IdDocumento
+INNER JOIN LoginUniPass L 
+    ON L.IdLogin    = D.IdLogin
+WHERE 
+    L.TipoUser = 'ALUMNO'
+    AND (
+        -- si es 5, dormitorio entre 1 y 4
+        (@IdDormitorio = 5 AND L.Dormitorio BETWEEN 1 AND 4)
+        OR
+        -- si no es 5, dormitorio igual al parámetro
+        (@IdDormitorio <> 5 AND L.Dormitorio = @IdDormitorio)
+    );
+
+            `)
         if (result.recordset.length === 0) {
             return res.status(404).json({ message: "No se encontraron experientes"})
         }
@@ -234,37 +250,48 @@ export const getArchivosAlumno = async (req, res) => {
     console.log(req.params);
     let pool;
     try {
-        // Verifica los parámetros recibidos
-        const { Dormitorio, Nombre, Apellidos } = req.params;
+        const { Dormitorio, Nombre, Apellidos, Matricula } = req.params;
 
-        // Si no llegan los parámetros, devuelves un mensaje de error
-        if (!Dormitorio || !Nombre || !Apellidos) {
-            return res.status(400).json({ message: "Faltan parámetros en la solicitud" });
+        if (!Dormitorio) {
+            return res.status(400).json({ message: "El parámetro Dormitorio es obligatorio" });
         }
 
         pool = await getConnection();
-        const result = await pool.request()
-        .input('Dormitorio', sql.Int, req.params.Dormitorio)
-            .input('Nombre', sql.VarChar, req.params.Nombre)
-            .input('Apellidos', sql.VarChar, req.params.Apellidos)
-            .query(`
-                SELECT Doctos.*, DocumentCatalog.* 
-                FROM Doctos 
-                INNER JOIN DocumentCatalog ON DocumentCatalog.IdDocument = Doctos.IdDocumento
-                INNER JOIN LoginUniPass ON LoginUniPass.IdLogin = Doctos.IdLogin
-                WHERE LoginUniPass.Dormitorio = @Dormitorio 
-                AND LoginUniPass.Nombre = @Nombre 
-                AND LoginUniPass.Apellidos = @Apellidos
-                AND DocumentCatalog.Estado = 'Activo'
-            `);
+        const request = pool.request()
+            .input('Dormitorio', sql.Int, Dormitorio)
+            .input('Nombre', sql.VarChar, Nombre || null)
+            .input('Apellidos', sql.VarChar, Apellidos || null)
+            .input('Matricula', sql.VarChar, Matricula || null);
+
+        const result = await request.query(`
+            SELECT Doctos.*, DocumentCatalog.*
+            FROM Doctos
+            INNER JOIN DocumentCatalog ON DocumentCatalog.IdDocument = Doctos.IdDocumento
+            INNER JOIN LoginUniPass ON LoginUniPass.IdLogin = Doctos.IdLogin
+            WHERE DocumentCatalog.Estado = 'Activo'
+            AND (
+                -- ADMINISTRATIVO: buscar por matrícula
+                (@Dormitorio = 5 AND LoginUniPass.Matricula = @Matricula)
+
+                -- PRECEPTOR: buscar por nombre y apellidos
+                OR (@Dormitorio <> 5 AND 
+                    LoginUniPass.Dormitorio = @Dormitorio AND
+                    (@Nombre IS NULL OR LoginUniPass.Nombre = @Nombre) AND
+                    (@Apellidos IS NULL OR LoginUniPass.Apellidos = @Apellidos)
+                )
+            );
+        `);
+
         if (result.recordset.length === 0) {
             return res.status(404).json({ message: "No se encontraron expedientes para el alumno especificado" });
         }
+
         return res.json(result.recordset);
+
     } catch (error) {
         console.error('Error en el servidor:', error);
         res.status(500).send(error.message);
-    }finally {
+    } finally {
         if (pool) {
             try {
                 await pool.close();
@@ -273,7 +300,8 @@ export const getArchivosAlumno = async (req, res) => {
             }
         }
     }
-}
+};
+
 
 export const aprobarDocumento = async (req, res) => {
     let pool;

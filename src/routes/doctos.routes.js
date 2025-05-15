@@ -17,7 +17,7 @@ router.delete("/doctosMul/:Id", deleteFileDoc);
 
 router.get("/getExpediente/:IdDormi", getExpedientesAlumnos)
 
-router.get("/getArchivos/:Dormitorio/:Nombre/:Apellidos", getArchivosAlumno);
+router.get("/getArchivos/:Dormitorio/:Nombre?/:Apellidos?/:Matricula?", getArchivosAlumno);
 
 router.put("/statusRevision/:Id", aprobarDocumento)
 

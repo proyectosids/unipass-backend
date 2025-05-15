@@ -457,64 +457,66 @@ export const DashboardPermission = async (req, res) => {
     try {
         pool = await getConnection();
         const respuesta = await pool.request()
-            .input('Matricula', sql.Int, req.params.IdPreceptor)
+            .input('Matricula', sql.VarChar, req.params.IdPreceptor)
             .query(`
-                WITH PermisosFiltrados AS (
-                    -- Primera parte: Permisos con solo una autorización
-                    SELECT P.*, T.*, L.*
-                    FROM Permission P
-                    INNER JOIN Authorize A ON P.IdPermission = A.IdPermission
-                    JOIN TypeExit T ON P.IdTipoSalida = T.IdTypeExit
-                    JOIN LoginUniPass L ON P.IdUser = L.IdLogin
-                    WHERE A.IdEmpleado = @Matricula
-                    AND P.IdPermission IN (
-                        SELECT A1.IdPermission
-                        FROM Authorize A1
-                        GROUP BY A1.IdPermission
-                        HAVING COUNT(A1.IdAuthorize) = 1
-                    )
-
-                    UNION
-
-                    -- Segunda parte: Permisos donde la primera autorización fue Aprobada
-                    SELECT P.*, T.*, L.*
-                    FROM Permission P
-                    INNER JOIN Authorize A ON P.IdPermission = A.IdPermission
-                    JOIN TypeExit T ON P.IdTipoSalida = T.IdTypeExit
-                    JOIN LoginUniPass L ON P.IdUser = L.IdLogin
-                    WHERE A.IdEmpleado = @Matricula
-                    AND P.IdPermission IN (
-                        SELECT A1.IdPermission
-                        FROM Authorize A1
-                        WHERE A1.StatusAuthorize = 'Aprobada'
-                        AND A1.IdAuthorize = (
-                            SELECT TOP 1 A2.IdAuthorize
-                            FROM Authorize A2
-                            WHERE A2.IdPermission = A1.IdPermission
-                            ORDER BY A2.IdAuthorize
-                        )
-                    )
-                ),
-                Conteo AS (
-                    SELECT StatusPermission, COUNT(*) AS Cantidad
-                    FROM PermisosFiltrados
-                    GROUP BY StatusPermission
-
-                    UNION ALL
-
-                    SELECT 'TOTAL', COUNT(*) FROM PermisosFiltrados
+               WITH EmpleadoDormitorio AS (
+    SELECT TOP 1 Dormitorio AS Dorm FROM LoginUniPass WHERE Matricula = @Matricula
+),
+PermisosFiltrados AS (
+    SELECT DISTINCT P.IdPermission, P.StatusPermission
+    FROM Permission P
+    INNER JOIN Authorize A ON P.IdPermission = A.IdPermission
+    JOIN LoginUniPass L ON P.IdUser = L.IdLogin
+    CROSS APPLY (SELECT Dorm FROM EmpleadoDormitorio) AS D
+    WHERE 
+        (
+            D.Dorm = 5
+        )
+        OR
+        (
+            A.IdEmpleado = @Matricula
+            AND (
+                P.IdPermission IN (
+                    SELECT A1.IdPermission
+                    FROM Authorize A1
+                    GROUP BY A1.IdPermission
+                    HAVING COUNT(A1.IdAuthorize) = 1
                 )
+                OR
+                P.IdPermission IN (
+                    SELECT A1.IdPermission
+                    FROM Authorize A1
+                    WHERE A1.StatusAuthorize = 'Aprobada'
+                    AND A1.IdAuthorize = (
+                        SELECT TOP 1 A2.IdAuthorize
+                        FROM Authorize A2
+                        WHERE A2.IdPermission = A1.IdPermission
+                        ORDER BY A2.IdAuthorize
+                    )
+                )
+            )
+        )
+),
+Conteo AS (
+    SELECT StatusPermission, COUNT(*) AS Cantidad
+    FROM PermisosFiltrados
+    GROUP BY StatusPermission
 
-                SELECT 
-                    ISNULL([Aprobada], 0) AS Aprobadas,
-                    ISNULL([Rechazada], 0) AS Rechazadas,
-                    ISNULL([Pendiente], 0) AS Pendientes,
-                    ISNULL([TOTAL], 0) AS Total
-                FROM Conteo
-                PIVOT (
-                    SUM(Cantidad)
-                    FOR StatusPermission IN ([Aprobada], [Rechazada], [Pendiente], [TOTAL])
-                ) AS ConteoPivot;
+    UNION ALL
+
+    SELECT 'TOTAL', COUNT(*) FROM PermisosFiltrados
+)
+SELECT 
+    ISNULL([Aprobada], 0) AS Aprobadas,
+    ISNULL([Rechazada], 0) AS Rechazadas,
+    ISNULL([Pendiente], 0) AS Pendientes,
+    ISNULL([TOTAL], 0) AS Total
+FROM Conteo
+PIVOT (
+    SUM(Cantidad)
+    FOR StatusPermission IN ([Aprobada], [Rechazada], [Pendiente], [TOTAL])
+) AS ConteoPivot;
+
             `);
 
         const resultados = respuesta.recordset;
@@ -543,19 +545,31 @@ export const DashboardDocumentos = async (req, res) => {
     try {
         pool = await getConnection();
         const respuesta = await pool.request()
-            .input('Matricula', sql.Int, req.params.IdPreceptor)
-            .query(`SELECT
+            .input('Matricula', sql.VarChar, req.params.IdPreceptor)
+            .query(`
+                WITH Empleado AS (
+  SELECT Dormitorio, TipoUser
+  FROM LoginUniPass
+  WHERE Matricula = @Matricula
+),
+Filtrados AS (
+  SELECT d.*
+  FROM Doctos d
+  JOIN LoginUniPass a ON d.IdLogin = a.IdLogin
+  WHERE a.TipoUser = 'ALUMNO'
+    AND (
+      -- Si el usuario es ADMINISTRATIVO y tiene dormitorio 5, mostrar documentos de dormitorios 1 al 4
+      ((SELECT TipoUser FROM Empleado) = 'ADMINISTRATIVO' AND (SELECT Dormitorio FROM Empleado) = 5 AND a.Dormitorio BETWEEN 1 AND 4)
+      -- De lo contrario, solo del dormitorio del empleado
+      OR ((SELECT Dormitorio FROM Empleado) = a.Dormitorio AND (SELECT Dormitorio FROM Empleado) <> 5)
+    )
+)
+SELECT
   COUNT(*) AS Total,
-  SUM(CASE WHEN d.StatusRevision = 'Aprobado' THEN 1 ELSE 0 END) AS Aprobado,
-  SUM(CASE WHEN d.StatusRevision = 'Pendiente' THEN 1 ELSE 0 END) AS Pendiente
-FROM Doctos d
-JOIN LoginUniPass a ON d.IdLogin = a.IdLogin
-WHERE a.TipoUser = 'ALUMNO'
-  AND a.Dormitorio = (
-    SELECT Dormitorio
-    FROM LoginUniPass
-    WHERE Matricula = @Matricula AND TipoUser = 'PRECEPTOR'
-  );
+  SUM(CASE WHEN StatusRevision = 'Aprobado' THEN 1 ELSE 0 END) AS Aprobado,
+  SUM(CASE WHEN StatusRevision = 'Pendiente' THEN 1 ELSE 0 END) AS Pendiente
+FROM Filtrados;
+
             `);
 
         const resultados = respuesta.recordset;
@@ -580,81 +594,141 @@ WHERE a.TipoUser = 'ALUMNO'
 };
 
 export const filtrarPermisos = async (req, res) => {
-    const { fechaInicio, fechaFin, status, nombre, matricula } = req.query;
-    const idEmpleado = parseInt(req.params.IdPreceptor); // se asume que el ID del preceptor llega por params
-
+    const {
+      fechaInicio,
+      fechaFin,
+      status,
+      nombre,
+      matricula: filtroMatricula
+    } = req.query;
+    const idEmpleado = parseInt(req.params.IdPreceptor, 10);
+  
     let pool;
     try {
-        pool = await getConnection();
-        const result = await pool.request()
-            .input('FechaInicio', sql.Date, fechaInicio || null)
-            .input('FechaFin', sql.Date, fechaFin || null)
-            .input('Status', sql.VarChar(20), status || null)
-            .input('Nombre', sql.VarChar(100), nombre || null)
-            .input('Matricula', sql.VarChar(20), matricula || null)
-            .input('IdEmpleado', sql.Int, idEmpleado)
-            .query(`
-                WITH PermisosFiltrados AS (
-                    SELECT P.*, T.*, L.*
-                    FROM Permission P
-                    INNER JOIN Authorize A ON P.IdPermission = A.IdPermission
-                    JOIN TypeExit T ON P.IdTipoSalida = T.IdTypeExit
-                    JOIN LoginUniPass L ON P.IdUser = L.IdLogin
-                    WHERE A.IdEmpleado = @IdEmpleado
-                    AND P.IdPermission IN (
-                        SELECT A1.IdPermission
-                        FROM Authorize A1
-                        GROUP BY A1.IdPermission
-                        HAVING COUNT(A1.IdAuthorize) = 1
-                    )
-
-                    UNION
-
-                    SELECT P.*, T.*, L.*
-                    FROM Permission P
-                    INNER JOIN Authorize A ON P.IdPermission = A.IdPermission
-                    JOIN TypeExit T ON P.IdTipoSalida = T.IdTypeExit
-                    JOIN LoginUniPass L ON P.IdUser = L.IdLogin
-                    WHERE A.IdEmpleado = @IdEmpleado
-                    AND P.IdPermission IN (
-                        SELECT A1.IdPermission
-                        FROM Authorize A1
-                        WHERE A1.StatusAuthorize = 'Aprobada'
-                        AND A1.IdAuthorize = (
-                            SELECT TOP 1 A2.IdAuthorize
-                            FROM Authorize A2
-                            WHERE A2.IdPermission = A1.IdPermission
-                            ORDER BY A2.IdAuthorize
-                        )
-                    )
-                )
-
-                SELECT *
-                FROM PermisosFiltrados
-                WHERE 
-                    (@FechaInicio IS NULL OR FechaSalida >= @FechaInicio AND FechaSalida < DATEADD(DAY, 1, @FechaInicio)) AND
-                    (@FechaFin IS NULL OR FechaRegreso >= @FechaFin AND FechaRegreso < DATEADD(DAY, 1, @FechaFin)) AND
-                    (@Status IS NULL OR StatusPermission = @Status) AND
-                    (@Nombre IS NULL OR Nombre LIKE '%' + @Nombre + '%') AND
-                    (@Matricula IS NULL OR Matricula LIKE '%' + @Matricula + '%');
-            `);
-
-        if (!result.recordset || result.recordset.length === 0) {
-            return res.status(404).json({ message: 'No se encontraron permisos con los filtros aplicados.' });
-        }
-
-        return res.json(result.recordset);
-
-    } catch (error) {
-        console.error('Error al filtrar permisos:', error);
-        res.status(500).send(error.message);
-    } finally {
-        if (pool) {
-            try {
-                await pool.close();
-            } catch (err) {
-                console.error('Error al cerrar la conexión:', err.message);
-            }
-        }
+      pool = await getConnection();
+  
+      // 1) Obtener el tipo de usuario
+      const userResult = await pool.request()
+        .input('MatriculaInput', sql.VarChar(20), idEmpleado.toString())
+        .query(`
+          SELECT TipoUser
+          FROM LoginUniPass
+          WHERE Matricula = @MatriculaInput
+        `);
+  
+      if (!userResult.recordset.length) {
+        return res.status(404).json({ message: 'Usuario no encontrado.' });
+      }
+  
+      const { TipoUser } = userResult.recordset[0];
+  
+      // 2) Preparar los parámetros comunes
+      const request = pool.request()
+        .input('FechaInicio', sql.Date, fechaInicio || null)
+        .input('FechaFin',    sql.Date, fechaFin    || null)
+        .input('Status',      sql.VarChar(20), status || null)
+        .input('Nombre',      sql.VarChar(100), nombre || null)
+        .input('Matricula',   sql.VarChar(20), filtroMatricula || null)
+        .input('IdEmpleado',  sql.Int, idEmpleado);
+  
+      let consultaSQL;
+  
+      // 3) Armar la consulta según el tipo de usuario
+      if (TipoUser === 'ADMINISTRATIVO') {
+        consultaSQL = `
+          SELECT P.*, T.*, L.*
+          FROM Permission P
+          INNER JOIN TypeExit    T ON P.IdTipoSalida = T.IdTypeExit
+          INNER JOIN LoginUniPass L ON P.IdUser       = L.IdLogin
+          WHERE
+            (@FechaInicio IS NULL OR P.FechaSalida   >= @FechaInicio
+                                  AND P.FechaSalida   <  DATEADD(DAY, 1, @FechaInicio)) AND
+            (@FechaFin    IS NULL OR P.FechaRegreso  >= @FechaFin
+                                  AND P.FechaRegreso  <  DATEADD(DAY, 1, @FechaFin)) AND
+            (@Status      IS NULL OR P.StatusPermission = @Status) AND
+            (@Nombre      IS NULL OR L.Nombre    LIKE '%' + @Nombre    + '%') AND
+            (@Matricula   IS NULL OR L.Matricula LIKE '%' + @Matricula + '%')
+          ORDER BY P.FechaSolicitada DESC;
+        `;
+      }
+      else if (TipoUser === 'PRECEPTOR') {
+        consultaSQL = `
+          WITH PermisosFiltrados AS (
+            -- permisos con una sola autorización registrada
+            SELECT P.*, T.*, L.*
+            FROM Permission P
+            INNER JOIN Authorize    A ON P.IdPermission  = A.IdPermission
+            INNER JOIN TypeExit     T ON P.IdTipoSalida  = T.IdTypeExit
+            INNER JOIN LoginUniPass L ON P.IdUser        = L.IdLogin
+            WHERE A.IdEmpleado = @IdEmpleado
+              AND P.IdPermission IN (
+                SELECT A1.IdPermission
+                FROM Authorize A1
+                GROUP BY A1.IdPermission
+                HAVING COUNT(A1.IdAuthorize) = 1
+              )
+            UNION
+            -- permisos con autorización aprobada (última)
+            SELECT P.*, T.*, L.*
+            FROM Permission P
+            INNER JOIN Authorize    A ON P.IdPermission  = A.IdPermission
+            INNER JOIN TypeExit     T ON P.IdTipoSalida  = T.IdTypeExit
+            INNER JOIN LoginUniPass L ON P.IdUser        = L.IdLogin
+            WHERE A.IdEmpleado = @IdEmpleado
+              AND P.IdPermission IN (
+                SELECT A1.IdPermission
+                FROM Authorize A1
+                WHERE A1.StatusAuthorize = 'Aprobada'
+                  AND A1.IdAuthorize = (
+                    SELECT TOP 1 A2.IdAuthorize
+                    FROM Authorize A2
+                    WHERE A2.IdPermission = A1.IdPermission
+                    ORDER BY A2.IdAuthorize
+                  )
+              )
+          )
+          SELECT *
+          FROM PermisosFiltrados
+          WHERE
+            (@FechaInicio IS NULL OR FechaSalida   >= @FechaInicio
+                                  AND FechaSalida   <  DATEADD(DAY, 1, @FechaInicio)) AND
+            (@FechaFin    IS NULL OR FechaRegreso  >= @FechaFin
+                                  AND FechaRegreso  <  DATEADD(DAY, 1, @FechaFin)) AND
+            (@Status      IS NULL OR StatusPermission = @Status) AND
+            (@Nombre      IS NULL OR Nombre    LIKE '%' + @Nombre    + '%') AND
+            (@Matricula   IS NULL OR Matricula LIKE '%' + @Matricula + '%')
+          ORDER BY FechaSolicitada DESC;
+        `;
+      }
+      else {
+        return res
+          .status(403)
+          .json({ message: 'El tipo de usuario no tiene permisos para consultar salidas.' });
+      }
+  
+      // 4) Ejecutar y devolver resultado
+      const result = await request.query(consultaSQL);
+  
+      if (!result.recordset.length) {
+        return res
+          .status(404)
+          .json({ message: 'No se encontraron permisos con los filtros aplicados.' });
+      }
+  
+      res.json(result.recordset);
     }
-};
+    catch (error) {
+      console.error('Error al filtrar permisos:', error);
+      res.status(500).send(error.message);
+    }
+    finally {
+      if (pool) {
+        try {
+          await pool.close();
+        }
+        catch (err) {
+          console.error('Error al cerrar la conexión:', err.message);
+        }
+      }
+    }
+  };
