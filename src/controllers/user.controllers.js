@@ -226,6 +226,8 @@ export const verifySessionToken = (req, res) => {
 
 //==================================== FIN LOGIN ================================================
 
+//==================================== CAMBIAR CONTRASEÑA (aNALIZARA PARA SU MEJORA) ====================================
+
 export const putPassword = async (req, res) => {
     let pool;
     try {
