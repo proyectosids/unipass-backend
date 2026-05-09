@@ -2,6 +2,12 @@ import { getConnection } from "../database/connection.js";
 import { hashData, VerifyHashData } from '../util/hashData.js';
 import sql from 'mssql';
 import { generateToken } from '../util/generateToken.js'
+import {
+    generateAccessToken,
+    generateRefreshToken,
+    hashRefreshToken,
+    getRefreshExpiresAt
+} from '../util/tokens.js';
 
 export const getUsers = async (req, res) => {
     let pool;
@@ -201,21 +207,159 @@ export const loginUser = async (req, res) => {
         }
 
         const user = result.recordset[0];
-        console.log(user);
         const isPasswordValid = await VerifyHashData(Contraseña, user.Contraseña);
         if (!isPasswordValid) {
             return res.status(401).json({ success: false, message: 'Credenciales inválidas' });
         }
 
-        const token = generateToken(user);
-        console.log(token);
-        //Enviar el token al frontend
-        return res.json({ success: true, token, user });
+        // Generar par access + refresh
+        const accessToken = generateAccessToken(user);
+        const refreshToken = generateRefreshToken();
+        const refreshHash = hashRefreshToken(refreshToken);
+        const expiresAt = getRefreshExpiresAt();
+        const deviceInfo = (req.headers['user-agent'] || '').slice(0, 255);
+
+        await pool.request()
+            .input('IdLogin', sql.Int, user.IdLogin)
+            .input('TokenHash', sql.VarChar, refreshHash)
+            .input('ExpiresAt', sql.DateTime, expiresAt)
+            .input('DeviceInfo', sql.VarChar, deviceInfo)
+            .query(`INSERT INTO RefreshToken (IdLogin, TokenHash, ExpiresAt, DeviceInfo)
+                    VALUES (@IdLogin, @TokenHash, @ExpiresAt, @DeviceInfo)`);
+
+        console.log(`[Auth] Login: userId=${user.IdLogin}`);
+
+        // 'token' se mantiene temporalmente por compatibilidad con clientes viejos.
+        return res.json({
+            success: true,
+            accessToken,
+            refreshToken,
+            token: accessToken,
+            user
+        });
 
     } catch (error) {
+        console.error('[Auth] Error en login:', error);
         res.status(500).json({ error: error.message });
     } finally {
         if (pool) pool.close();
+    }
+};
+
+export const refreshTokenController = async (req, res) => {
+    let pool;
+    try {
+        const { refreshToken } = req.body || {};
+        if (!refreshToken) {
+            return res.status(400).json({ message: 'refreshToken requerido', code: 'MISSING_REFRESH_TOKEN' });
+        }
+
+        const tokenHash = hashRefreshToken(refreshToken);
+        pool = await getConnection();
+
+        const tokenResult = await pool.request()
+            .input('TokenHash', sql.VarChar, tokenHash)
+            .query('SELECT * FROM RefreshToken WHERE TokenHash = @TokenHash');
+
+        if (tokenResult.recordset.length === 0) {
+            return res.status(401).json({ message: 'Refresh token invalido', code: 'INVALID_REFRESH_TOKEN' });
+        }
+
+        const stored = tokenResult.recordset[0];
+
+        // Detectar reuso: si ya estaba revocado, asumir robo y revocar todos los tokens activos del usuario
+        if (stored.RevokedAt !== null) {
+            await pool.request()
+                .input('IdLogin', sql.Int, stored.IdLogin)
+                .query(`UPDATE RefreshToken
+                        SET RevokedAt = GETDATE()
+                        WHERE IdLogin = @IdLogin AND RevokedAt IS NULL`);
+            console.warn(`[Auth] Refresh REUSE detected: userId=${stored.IdLogin} - revoking all`);
+            return res.status(401).json({ message: 'Refresh token reutilizado, sesion revocada', code: 'REFRESH_REUSE_DETECTED' });
+        }
+
+        if (new Date(stored.ExpiresAt) < new Date()) {
+            return res.status(401).json({ message: 'Refresh token expirado', code: 'REFRESH_EXPIRED' });
+        }
+
+        // Cargar usuario para armar nuevo access token
+        const userResult = await pool.request()
+            .input('IdLogin', sql.Int, stored.IdLogin)
+            .query('SELECT * FROM LoginUniPass WHERE IdLogin = @IdLogin');
+
+        if (userResult.recordset.length === 0) {
+            return res.status(401).json({ message: 'Usuario no encontrado', code: 'USER_NOT_FOUND' });
+        }
+        const user = userResult.recordset[0];
+
+        // Rotacion: generar nuevo par
+        const newAccess = generateAccessToken(user);
+        const newRefresh = generateRefreshToken();
+        const newHash = hashRefreshToken(newRefresh);
+        const newExpires = getRefreshExpiresAt();
+        const deviceInfo = (req.headers['user-agent'] || '').slice(0, 255);
+
+        // Marcar el viejo como revocado y reemplazado
+        await pool.request()
+            .input('RefreshTokenId', sql.Int, stored.RefreshTokenId)
+            .input('ReplacedBy', sql.VarChar, newHash)
+            .query(`UPDATE RefreshToken
+                    SET RevokedAt = GETDATE(), ReplacedByTokenHash = @ReplacedBy
+                    WHERE RefreshTokenId = @RefreshTokenId`);
+
+        // Insertar el nuevo
+        await pool.request()
+            .input('IdLogin', sql.Int, user.IdLogin)
+            .input('TokenHash', sql.VarChar, newHash)
+            .input('ExpiresAt', sql.DateTime, newExpires)
+            .input('DeviceInfo', sql.VarChar, deviceInfo)
+            .query(`INSERT INTO RefreshToken (IdLogin, TokenHash, ExpiresAt, DeviceInfo)
+                    VALUES (@IdLogin, @TokenHash, @ExpiresAt, @DeviceInfo)`);
+
+        console.log(`[Auth] Refresh: userId=${user.IdLogin} tokenId=${stored.RefreshTokenId}`);
+
+        return res.json({ accessToken: newAccess, refreshToken: newRefresh });
+    } catch (error) {
+        console.error('[Auth] Error en refresh:', error);
+        res.status(500).json({ error: 'Error en refresh' });
+    } finally {
+        if (pool) {
+            try { await pool.close(); } catch (e) { console.error('Error cerrando pool:', e.message); }
+        }
+    }
+};
+
+export const logoutUser = async (req, res) => {
+    let pool;
+    try {
+        const { refreshToken } = req.body || {};
+        if (!refreshToken) {
+            return res.status(400).json({ message: 'refreshToken requerido', code: 'MISSING_REFRESH_TOKEN' });
+        }
+
+        const tokenHash = hashRefreshToken(refreshToken);
+        pool = await getConnection();
+
+        const result = await pool.request()
+            .input('TokenHash', sql.VarChar, tokenHash)
+            .query(`UPDATE RefreshToken
+                    SET RevokedAt = GETDATE()
+                    OUTPUT INSERTED.RefreshTokenId, INSERTED.IdLogin
+                    WHERE TokenHash = @TokenHash AND RevokedAt IS NULL`);
+
+        if (result.recordset.length > 0) {
+            const { RefreshTokenId, IdLogin } = result.recordset[0];
+            console.log(`[Auth] Logout: userId=${IdLogin} tokenId=${RefreshTokenId}`);
+        }
+
+        return res.status(204).send();
+    } catch (error) {
+        console.error('[Auth] Error en logout:', error);
+        res.status(500).json({ error: 'Error en logout' });
+    } finally {
+        if (pool) {
+            try { await pool.close(); } catch (e) { console.error('Error cerrando pool:', e.message); }
+        }
     }
 };
 

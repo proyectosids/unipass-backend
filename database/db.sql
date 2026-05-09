@@ -132,3 +132,24 @@ CREATE TABLE Doctos (
 )
 
 -- DROP TABLE Doctos
+
+-- ============================================================
+-- Tabla RefreshToken: persiste hash de refresh tokens (rotation)
+-- ============================================================
+CREATE TABLE RefreshToken (
+    RefreshTokenId INT IDENTITY PRIMARY KEY,
+    IdLogin INT NOT NULL,
+    TokenHash VARCHAR(128) NOT NULL,
+    ExpiresAt DATETIME NOT NULL,
+    CreatedAt DATETIME NOT NULL DEFAULT GETDATE(),
+    RevokedAt DATETIME NULL,
+    ReplacedByTokenHash VARCHAR(128) NULL,
+    DeviceInfo VARCHAR(255) NULL,
+    CONSTRAINT fk_refreshtoken_login FOREIGN KEY (IdLogin) REFERENCES LoginUniPass(IdLogin)
+);
+
+CREATE INDEX IX_RefreshToken_IdLogin ON RefreshToken (IdLogin);
+CREATE UNIQUE INDEX IX_RefreshToken_TokenHash ON RefreshToken (TokenHash);
+
+-- Limpieza periodica (ejecutar como job o manualmente):
+-- DELETE FROM RefreshToken WHERE ExpiresAt < GETDATE() OR (RevokedAt IS NOT NULL AND RevokedAt < DATEADD(DAY, -30, GETDATE()));
