@@ -1,5 +1,6 @@
 import { getConnection } from "../database/connection.js";
 import sql from 'mssql';
+import { emitToUser, emitToEmpleado } from "../util/socketHelpers.js";
 
 export const createAuthorize = async (req, res) => {
     let pool;
@@ -24,6 +25,18 @@ export const createAuthorize = async (req, res) => {
             IdPermission: req.body.IdPermission,
             StatusAuthorize: req.body.StatusAuthorize,
         });
+
+        // Socket.IO: notificar al empleado asignado (+ cobertura)
+        try {
+            const io = req.app.get('io');
+            await emitToEmpleado(io, pool, req.body.IdEmpleado, 'new_authorization_assigned', {
+                idPermission: req.body.IdPermission,
+                status: req.body.StatusAuthorize,
+                timestamp: new Date().toISOString()
+            });
+        } catch (socketError) {
+            console.error('[Socket] Error en createAuthorize:', socketError.message);
+        }
     } catch (error) {
         if (error.code === 'ECONNCLOSED') {
             console.error('La conexión se cerró, reintentando...');
@@ -102,7 +115,59 @@ export const definirAutorizacion = async (req, res) => {
                     AND StatusAuthorize = @StatusAuthorize 
                     ORDER BY IdAuthorize DESC`);
 
-        return res.json(updatedRecord.recordset[0]);
+        // Socket.IO: obtener matricula del alumno y siguiente eslabon en cadena
+        let matriculaAlumno = null;
+        let nextEmpleado = null;
+        try {
+            const alumnoResult = await pool.request()
+                .input('IdPermisoSocket', sql.Int, req.params.Id)
+                .query('SELECT L.Matricula FROM Permission P JOIN LoginUniPass L ON P.IdUser = L.IdLogin WHERE P.IdPermission = @IdPermisoSocket');
+            if (alumnoResult.recordset.length > 0) {
+                matriculaAlumno = alumnoResult.recordset[0].Matricula;
+            }
+
+            // Si fue aprobada, buscar el siguiente Authorize Pendiente en la cadena
+            if (req.body.StatusAuthorize === 'Aprobada') {
+                const chainResult = await pool.request()
+                    .input('IdPermisoChain', sql.Int, req.params.Id)
+                    .query(`SELECT TOP 1 IdEmpleado
+                            FROM Authorize
+                            WHERE IdPermission = @IdPermisoChain
+                              AND StatusAuthorize = 'Pendiente'
+                            ORDER BY IdAuthorize`);
+                if (chainResult.recordset.length > 0) {
+                    nextEmpleado = chainResult.recordset[0].IdEmpleado;
+                }
+            }
+        } catch (queryError) {
+            console.error('[Socket] Error obteniendo datos para emit:', queryError.message);
+        }
+
+        res.json(updatedRecord.recordset[0]);
+
+        // Emitir eventos
+        try {
+            const io = req.app.get('io');
+
+            // 1) Notificar al alumno del cambio de estado
+            emitToUser(io, matriculaAlumno, 'permission_status_changed', {
+                idPermission: parseInt(req.params.Id),
+                status: req.body.StatusAuthorize,
+                updatedBy: req.body.IdEmpleado,
+                timestamp: new Date().toISOString()
+            });
+
+            // 2) Si hay siguiente eslabon (jefe aprobo -> preceptor), notificarlo
+            if (nextEmpleado) {
+                await emitToEmpleado(io, pool, nextEmpleado, 'new_authorization_assigned', {
+                    idPermission: parseInt(req.params.Id),
+                    status: 'Pendiente',
+                    timestamp: new Date().toISOString()
+                });
+            }
+        } catch (socketError) {
+            console.error('[Socket] Error en definirAutorizacion:', socketError.message);
+        }
     } catch (error) {
         if (error.code === 'ECONNCLOSED') {
             console.error('La conexión se cerró, reintentando...');

@@ -1,5 +1,6 @@
 import { getConnection } from "../database/connection.js";
 import sql from 'mssql';
+import { emitToUser, emitToEmpleado } from "../util/socketHelpers.js";
 
 export const getPermissionsByUser = async (req, res) => {
     let pool;
@@ -124,9 +125,24 @@ export const createPermission = async (req, res) => {
                 .input('Observaciones', sql.VarChar, 'Ninguna')
                 .query('INSERT INTO Permission (FechaSolicitada, StatusPermission, FechaSalida, FechaRegreso, Motivo, IdUser, IdTipoSalida, Observaciones) VALUES (@FechaSolicitada, @StatusPermission, @FechaSalida, @FechaRegreso, @Motivo, @IdUser, @IdTipoSalida, @Observaciones); SELECT SCOPE_IDENTITY() AS IdPermission');
 
+            const idPermissionCreated = result.recordset[0].IdPermission;
+
+            // Socket.IO: obtener datos del alumno para notificar
+            let alumnoInfo = null;
+            try {
+                const alumnoResult = await pool.request()
+                    .input('IdUserSocket', sql.Int, req.body.IdUser)
+                    .query('SELECT Matricula, Nombre FROM LoginUniPass WHERE IdLogin = @IdUserSocket');
+                if (alumnoResult.recordset.length > 0) {
+                    alumnoInfo = alumnoResult.recordset[0];
+                }
+            } catch (queryError) {
+                console.error('Error obteniendo info alumno para socket:', queryError);
+            }
+
             console.log(result);
             res.json({
-                Id: result.recordset[0].IdPermission,
+                Id: idPermissionCreated,
                 FechaSolicitada: fechaSolicitadaUTC,
                 StatusPermission: req.body.StatusPermission,
                 FechaSalida: fechaSalidaUTC,
@@ -136,6 +152,25 @@ export const createPermission = async (req, res) => {
                 IdUser: req.body.IdUser,
                 IdTipoSalida: req.body.IdTipoSalida,
             });
+
+            // Emitir new_permission_request al alumno (confirmacion).
+            // Los jefes/preceptores son notificados via 'new_authorization_assigned'
+            // al crearse los registros en Authorize (POST /authorize).
+            try {
+                const io = req.app.get('io');
+                if (alumnoInfo) {
+                    emitToUser(io, alumnoInfo.Matricula, 'new_permission_request', {
+                        idPermission: idPermissionCreated,
+                        idTipoSalida: req.body.IdTipoSalida,
+                        matriculaAlumno: String(alumnoInfo.Matricula),
+                        nombreAlumno: alumnoInfo.Nombre,
+                        fechaSalida: fechaSalidaUTC,
+                        timestamp: new Date().toISOString()
+                    });
+                }
+            } catch (socketError) {
+                console.error('[Socket] Error en createPermission:', socketError.message);
+            }
         } else {
             res.status(400).json({ error: 'El IdUsuario no existe en dbo.Users' });
         }
@@ -169,7 +204,33 @@ export const cancelPermission = async (req, res) => {
         if (result.rowsAffected[0] === 0) {
             return res.status(404).json({ message: "Dato no encontrado" });
         }
+
+        // Socket.IO: obtener empleados asignados para notificar cancelacion
+        let empleados = [];
+        try {
+            const authResult = await pool.request()
+                .input('IdPermissionSocket', sql.Int, req.params.Id)
+                .query('SELECT IdEmpleado FROM Authorize WHERE IdPermission = @IdPermissionSocket');
+            empleados = authResult.recordset;
+        } catch (queryError) {
+            console.error('Error obteniendo empleados para socket:', queryError);
+        }
+
         res.json("Dato Actualizado");
+
+        // Emitir permission_cancelled a cada empleado asignado (+ cobertura)
+        try {
+            const io = req.app.get('io');
+            const eventData = {
+                idPermission: parseInt(req.params.Id),
+                timestamp: new Date().toISOString()
+            };
+            for (const emp of empleados) {
+                await emitToEmpleado(io, pool, emp.IdEmpleado, 'permission_cancelled', eventData);
+            }
+        } catch (socketError) {
+            console.error('[Socket] Error en cancelPermission:', socketError.message);
+        }
     } catch (error) {
         console.error('Error en el servidor:', error);
         res.status(500).send(error.message);
@@ -315,7 +376,34 @@ export const autorizarPermiso = async (req, res) => {
         if (respuesta.rowsAffected[0] === 0) {
             return res.status(404).json({ message: "Dato no actualizado" });
         }
+
+        // Socket.IO: obtener matricula del alumno para notificar
+        let matriculaAlumno = null;
+        try {
+            const alumnoResult = await pool.request()
+                .input('IdPermisoSocket', sql.Int, req.params.Id)
+                .query('SELECT L.Matricula FROM Permission P JOIN LoginUniPass L ON P.IdUser = L.IdLogin WHERE P.IdPermission = @IdPermisoSocket');
+            if (alumnoResult.recordset.length > 0) {
+                matriculaAlumno = alumnoResult.recordset[0].Matricula;
+            }
+        } catch (queryError) {
+            console.error('Error obteniendo matricula para socket:', queryError);
+        }
+
         res.json({ message: "Permiso actualizado correctamente" });
+
+        // Emitir permission_finalized al alumno
+        try {
+            const io = req.app.get('io');
+            emitToUser(io, matriculaAlumno, 'permission_finalized', {
+                idPermission: parseInt(req.params.Id),
+                status: req.body.StatusPermission,
+                observaciones: req.body.Observaciones,
+                timestamp: new Date().toISOString()
+            });
+        } catch (socketError) {
+            console.error('[Socket] Error en autorizarPermiso:', socketError.message);
+        }
     } catch (error) {
         console.error('Error en el servidor:', error);
         res.status(500).send(error.message);

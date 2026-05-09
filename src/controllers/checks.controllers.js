@@ -1,5 +1,6 @@
 import { getConnection } from "../database/connection.js";
 import sql from 'mssql';
+import { emitToUser } from "../util/socketHelpers.js";
 
 export const createChecksPermission = async (req, res) => {
     let pool;
@@ -266,7 +267,40 @@ export const putCheckPoint = async (req, res) => {
             return res.status(404).json({ message: "CheckPoint no encontrado" });
         }
 
+        // Socket.IO: obtener info del checkpoint para notificar al alumno
+        let checkInfo = null;
+        try {
+            const checkResult = await pool.request()
+                .input('IdCheckSocket', sql.Int, id)
+                .query(`SELECT L.Matricula, CP.IdPermission, CP.Accion
+                        FROM CheckPoints CP
+                        JOIN Permission P ON CP.IdPermission = P.IdPermission
+                        JOIN LoginUniPass L ON P.IdUser = L.IdLogin
+                        WHERE CP.IdCheck = @IdCheckSocket`);
+            if (checkResult.recordset.length > 0) {
+                checkInfo = checkResult.recordset[0];
+            }
+        } catch (queryError) {
+            console.error('Error obteniendo info check para socket:', queryError);
+        }
+
         res.json({ message: "CheckPoint actualizado correctamente" });
+
+        // Emitir check_updated al alumno
+        try {
+            const io = req.app.get('io');
+            if (checkInfo) {
+                emitToUser(io, checkInfo.Matricula, 'check_updated', {
+                    idCheck: parseInt(id),
+                    idPermission: checkInfo.IdPermission,
+                    estatus: Estatus,
+                    accion: checkInfo.Accion,
+                    timestamp: new Date().toISOString()
+                });
+            }
+        } catch (socketError) {
+            console.error('[Socket] Error en putCheckPoint:', socketError.message);
+        }
     } catch (error) {
         console.error('Error al actualizar el CheckPoint:', error);
         res.status(500).json({ error: 'Error al actualizar el CheckPoint' });

@@ -18,8 +18,8 @@ const dbSettings = {
 
 export const getConnection = async () => {
   try {
-    const pool = await sql.connect(dbSettings);
-    console.log('✅ Conexión exitosa a SQL Server');
+    const pool = new sql.ConnectionPool(dbSettings);
+    await pool.connect();
     return pool;
   } catch (error) {
     console.error('❌ Error al conectar con SQL Server:', error);
