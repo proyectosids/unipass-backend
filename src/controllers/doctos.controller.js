@@ -1,7 +1,6 @@
 import { getConnection } from "../database/connection.js";
 import sql from 'mssql';
-import * as fs from 'fs';
-import path from "path";
+import { deleteUploadedFile } from "../util/fileStorage.js";
 
 
 export const getProfile = async (req, res) => {
@@ -58,13 +57,13 @@ export const getDocumentsByUser = async (req, res) => {
 
 export const saveDocument = async (req, res) => {
     let pool;
+    let filePath = null;
+    let insertOk = false;
     try {
-        console.log('Archivo recibido:', req.file); // Verificar archivo
-        console.log('Campos recibidos:', req.body); // Verificar campos
         if (!req.file) {
             return res.status(400).json({ message: "Archivo no cargado" });
         }
-        const filePath = '/uploads/' + req.file.filename;
+        filePath = '/uploads/' + req.file.filename;
 
         pool = await getConnection();
         const result = await pool.request()
@@ -76,6 +75,7 @@ export const saveDocument = async (req, res) => {
         if (result.recordset.length === 0) {
             return res.status(404).json({ message: "No se puede guardar el archivo" });
         }
+        insertOk = true;
         return res.json({
             Id: result.recordset[0].IdDoctos,
             IdDocumento: req.body.IdDocumento,
@@ -87,6 +87,10 @@ export const saveDocument = async (req, res) => {
         console.error('Error en el servidor:', error);
         return res.status(500).json({ message: 'Error en el proceso de carga' });
     } finally {
+        // Rollback: si el INSERT no termino bien y ya habia archivo subido, borrarlo.
+        if (!insertOk && filePath) {
+            await deleteUploadedFile(filePath);
+        }
         if (pool) {
             try {
                 await pool.close();
@@ -99,36 +103,60 @@ export const saveDocument = async (req, res) => {
 
 export const uploadProfile = async (req, res) => {
     let pool;
+    let newFilePath = null;
+    let updateOk = false;
+    let oldFilePath = null;
     try {
-        console.log('Archivo recibido:', req.file); // Verificar archivo
-        console.log('Campos recibidos:', req.body); // Verificar campos
         if (!req.file) {
             return res.status(400).json({ message: "Archivo no cargado" });
         }
-        const filePath = '/uploads/' + req.file.filename;
+        newFilePath = '/uploads/' + req.file.filename;
 
         pool = await getConnection();
+
+        // 1) Obtener path anterior para poder borrarlo despues
+        const oldResult = await pool.request()
+            .input('IdDocumento', sql.Int, req.body.IdDocumento)
+            .input('IdLogin', sql.Int, req.body.IdLogin)
+            .query('SELECT Archivo FROM Doctos WHERE IdLogin = @IdLogin AND IdDocumento = @IdDocumento');
+
+        if (oldResult.recordset.length > 0) {
+            oldFilePath = oldResult.recordset[0].Archivo;
+        }
+
+        // 2) Actualizar BD con el nuevo path
         const result = await pool.request()
             .input('IdDocumento', sql.Int, req.body.IdDocumento)
-            .input('Archivo', sql.VarChar, filePath)
+            .input('Archivo', sql.VarChar, newFilePath)
             .input('IdLogin', sql.Int, req.body.IdLogin)
             .query('UPDATE Doctos SET Archivo = @Archivo WHERE IdDocumento = @IdDocumento AND IdLogin = @IdLogin;');
+
         if (result.rowsAffected[0] === 0) {
             return res.status(404).json({ message: "No se puede actualizar el archivo" });
         }
+        updateOk = true;
 
-        // Para devolver el registro actualizado
-        const updatedRecord = await pool
-            .request()
+        const updatedRecord = await pool.request()
             .input('IdDocumento', sql.Int, req.body.IdDocumento)
             .input('IdLogin', sql.Int, req.body.IdLogin)
-            .query(`SELECT Archivo FROM Doctos WHERE IdLogin = @IdLogin AND IdDocumento = @IdDocumento`);
+            .query('SELECT Archivo FROM Doctos WHERE IdLogin = @IdLogin AND IdDocumento = @IdDocumento');
 
-        return res.json(updatedRecord.recordset[0]);
+        res.json(updatedRecord.recordset[0]);
+
+        // 3) Borrar el archivo viejo (si existia y es distinto al nuevo)
+        if (oldFilePath && oldFilePath !== newFilePath) {
+            await deleteUploadedFile(oldFilePath);
+        }
     } catch (error) {
         console.error('Error en el servidor:', error);
-        return res.status(500).json({ message: 'Error en el proceso de carga' });
+        if (!res.headersSent) {
+            return res.status(500).json({ message: 'Error en el proceso de carga' });
+        }
     } finally {
+        // Rollback: si el UPDATE no se concreto pero ya subimos el archivo nuevo, borrarlo.
+        if (!updateOk && newFilePath) {
+            await deleteUploadedFile(newFilePath);
+        }
         if (pool) {
             try {
                 await pool.close();
@@ -142,8 +170,21 @@ export const uploadProfile = async (req, res) => {
 export const deleteFileDoc = async (req, res) => {
     let pool;
     try {
-        await deleteFile(req.params.Id, req.body.IdDocumento);
         pool = await getConnection();
+
+        // 1) Obtener path del archivo (si existe el registro)
+        const fileResult = await pool.request()
+            .input("Id", sql.Int, req.params.Id)
+            .input("IdDocumento", sql.Int, req.body.IdDocumento)
+            .query("SELECT Archivo FROM Doctos WHERE IdLogin = @Id AND IdDocumento = @IdDocumento");
+
+        if (fileResult.recordset.length === 0) {
+            return res.status(404).json({ message: "Dato no encontrado" });
+        }
+        const archivoPath = fileResult.recordset[0].Archivo;
+
+        // 2) Borrar el registro PRIMERO (la BD es la fuente de verdad).
+        //    Si esto falla, no tocamos el disco.
         const deleteResult = await pool.request()
             .input("Id", sql.Int, req.params.Id)
             .input("IdDocumento", sql.Int, req.body.IdDocumento)
@@ -152,44 +193,19 @@ export const deleteFileDoc = async (req, res) => {
         if (deleteResult.rowsAffected[0] === 0) {
             return res.status(404).json({ message: "Dato no encontrado" });
         }
-        return res.status(200).json({ message: "DATO ELIMINADO" });
+
+        res.status(200).json({ message: "DATO ELIMINADO" });
+
+        // 3) Borrar el archivo despues. Si falla, queda huerfano (lo barre cleanOrphans),
+        //    pero el registro ya se fue, que es lo que el cliente espera.
+        if (archivoPath) {
+            await deleteUploadedFile(archivoPath);
+        }
     } catch (error) {
         console.error('Error en el servidor:', error);
-        return res.status(500).json({ message: 'Error en el proceso de eliminación' });
-    } finally {
-        if (pool) {
-            try {
-                await pool.close();
-            } catch (closeError) {
-                console.error('Error al cerrar la conexión a la base de datos:', closeError);
-            }
+        if (!res.headersSent) {
+            return res.status(500).json({ message: 'Error en el proceso de eliminación' });
         }
-    }
-};
-
-const deleteFile = async (UserId, IdDocumento) => {
-    let pool;
-    try {
-        pool = await getConnection();
-        const result = await pool
-            .request()
-            .input('Id', sql.Int, UserId)
-            .input("IdDocumento", sql.Int, IdDocumento)
-            .query('SELECT Archivo FROM Doctos WHERE IdLogin = @Id AND IdDocumento = @IdDocumento');
-
-        if (result.recordset.length === 0) {
-            throw new Error('Archivo no encontrado en la base de datos');
-        }
-
-        const Archivo = result.recordset[0].Archivo;
-        if (typeof Archivo !== 'string') {
-            throw new Error('El valor de Archivo no es una cadena de texto');
-        }
-
-        fs.unlinkSync('./public/' + Archivo);
-    } catch (error) {
-        console.error('Error eliminando archivo:', error);
-        throw error; // Re-lanzar el error para ser capturado en la función que llama
     } finally {
         if (pool) {
             try {
