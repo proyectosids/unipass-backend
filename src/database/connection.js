@@ -1,18 +1,28 @@
 import sql from 'mssql';
+import dotenv from 'dotenv';
+dotenv.config();
+
+const required = ['DB_USER', 'DB_PASSWORD', 'DB_SERVER', 'DB_DATABASE'];
+for (const key of required) {
+  if (!process.env[key]) {
+    console.warn(`[DB] Falta variable de entorno: ${key}`);
+  }
+}
 
 const dbSettings = {
-  user: 'sa',
-  password: 'Trencole5Q!',      // la misma que usaste al crear el contenedor
-  server: 'localhost',           // se conecta al puerto 1433 expuesto
-  database: 'UNIPASS',           // debe existir dentro del contenedor
+  user: process.env.DB_USER,
+  password: process.env.DB_PASSWORD,
+  server: process.env.DB_SERVER,
+  database: process.env.DB_DATABASE,
+  port: parseInt(process.env.DB_PORT || '1433', 10),
   pool: {
-    max: 10,
-    min: 0,
-    idleTimeoutMillis: 30000
+    max: parseInt(process.env.DB_POOL_MAX || '10', 10),
+    min: parseInt(process.env.DB_POOL_MIN || '0', 10),
+    idleTimeoutMillis: parseInt(process.env.DB_POOL_IDLE_MS || '30000', 10)
   },
   options: {
-    encrypt: false,              // ⚙️ desactiva TLS en entorno local
-    trustServerCertificate: true // ✅ necesario en local o contenedor
+    encrypt: process.env.DB_ENCRYPT === 'true',
+    trustServerCertificate: process.env.DB_TRUST_CERT === 'true'
   }
 };
 
@@ -22,6 +32,7 @@ export const getConnection = async () => {
     await pool.connect();
     return pool;
   } catch (error) {
-    console.error('❌ Error al conectar con SQL Server:', error);
+    console.error('❌ Error al conectar con SQL Server:', error.message);
+    throw error;
   }
 };
