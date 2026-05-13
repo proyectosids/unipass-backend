@@ -14,7 +14,7 @@ const dbSettings = {
   password: process.env.DB_PASSWORD,
   server: process.env.DB_SERVER,
   database: process.env.DB_DATABASE,
-  port: parseInt(process.env.DB_PORT || '1433', 10),
+  port: parseInt(process.env.DB_PORT || '3000', 10),
   pool: {
     max: parseInt(process.env.DB_POOL_MAX || '10', 10),
     min: parseInt(process.env.DB_POOL_MIN || '0', 10),
