@@ -1,24 +1,10 @@
-import { getConnection } from "../database/connection.js";
-import sql from 'mssql';
+import { findPointsByExitId } from '../repositories/point.repo.js';
 
 export const getPointsChecks = async (req, res) => {
-    let pool;
     try {
-        pool = await getConnection();
-        const result = await pool
-            .request()
-            .input('IdSalida', sql.Int, req.params.Id)
-            .query('SELECT * FROM Point WHERE IdExit = @IdSalida')
-        res.json(result.recordset);
+        const points = await findPointsByExitId(req.params.Id);
+        res.json(points);
     } catch (error) {
-        res.status(500).json({error: error.message});
-    }finally {
-        if (pool) {
-            try {
-                await pool.close();
-            } catch (closeError) {
-                console.error('Error al cerrar la conexion a la base de datos:, closeError')
-            }
-        }
+        res.status(500).json({ error: error.message });
     }
-}
+};
