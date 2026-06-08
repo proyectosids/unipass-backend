@@ -36,3 +36,18 @@ export const getConnection = async () => {
     throw error;
   }
 };
+
+// Wrapper que garantiza el cierre del pool aunque el callback truene.
+// Uso: const data = await withConnection(async (pool) => { ... });
+export const withConnection = async (fn) => {
+  const pool = await getConnection();
+  try {
+    return await fn(pool);
+  } finally {
+    try {
+      await pool.close();
+    } catch (closeError) {
+      console.error('Error al cerrar pool:', closeError.message);
+    }
+  }
+};
