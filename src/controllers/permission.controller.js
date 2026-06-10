@@ -1,42 +1,34 @@
-import { getConnection } from "../database/connection.js";
-import sql from 'mssql';
-import { emitToUser, emitToEmpleado } from "../util/socketHelpers.js";
+import {
+    findPermissionsByUserPaginated,
+    findPermissionById,
+    userExistsById,
+    createPermissionRecord,
+    findAlumnoBasicByLogin,
+    cancelPermissionById,
+    findEmpleadosAuthorizeByPermission,
+    deletePermissionById,
+    findPermissionsForAutorizacionByEmpleado,
+    findPermissionsForAutorizacionPreceByEmpleado,
+    updatePermissionStatus,
+    findAlumnoMatriculaByPermission,
+    findTop10PermissionsByStudent,
+    findTop10PermissionsByEmployee,
+    findTop10PermissionsByPrece,
+    findDashboardPermissionCounts,
+    findDashboardDocumentosCounts,
+    findUserTipoByMatricula,
+    filterPermisosAdministrativo,
+    filterPermisosPreceptor
+} from '../repositories/permission.repo.js';
+import { emitToUser, emitToEmpleado } from '../util/socketHelpers.js';
 
 export const getPermissionsByUser = async (req, res) => {
-    let pool;
-    const { page = 1, limit = 10 } = req.query; // Valores por defecto: página 1 y 10 elementos
-    const offset = (page - 1) * limit; // Calcular el desplazamiento (offset)
-
+    const { page = 1, limit = 10 } = req.query;
     try {
-        pool = await getConnection();
-        const result = await pool
-            .request()
-            .input('Id', sql.Int, req.params.Id)
-            .input('Limit', sql.Int, parseInt(limit))
-            .input('Offset', sql.Int, parseInt(offset))
-            .query(`
-                SELECT * FROM Permission 
-                JOIN TypeExit ON Permission.IdTipoSalida = TypeExit.IdTypeExit 
-                JOIN LoginUniPass ON Permission.IdUser = LoginUniPass.IdLogin 
-                WHERE IdLogin = @Id
-                ORDER BY Permission.FechaSolicitada DESC
-                OFFSET @Offset ROWS FETCH NEXT @Limit ROWS ONLY
-            `);
-
-        // Consulta adicional para contar el total de permisos de usuario
-        const totalResult = await pool
-            .request()
-            .input('Id', sql.Int, req.params.Id)
-            .query(`
-                SELECT COUNT(*) as TotalPermissions FROM Permission 
-                WHERE IdUser = @Id
-            `);
-        const totalItems = totalResult.recordset[0].TotalPermissions;
+        const { data, totalItems } = await findPermissionsByUserPaginated(req.params.Id, page, limit);
         const totalPages = Math.ceil(totalItems / limit);
-
-        // Responder con los datos y los metadatos de paginación
         res.json({
-            data: result.recordset,
+            data,
             pagination: {
                 totalItems,
                 totalPages,
@@ -47,178 +39,106 @@ export const getPermissionsByUser = async (req, res) => {
     } catch (error) {
         console.error('Error en el servidor:', error);
         res.status(500).send(error.message);
-    } finally {
-        if (pool) {
-            try {
-                await pool.close();
-            } catch (closeError) {
-                console.error('Error al cerrar la conexión a la base de datos:', closeError);
-            }
-        }
     }
 };
 
-
 export const getPermission = async (req, res) => {
-    let pool;
     try {
-        console.log(req.params.Id);
-        pool = await getConnection();
-        const result = await pool
-            .request()
-            .input("Id", sql.Int, req.params.Id)
-            .query("SELECT * FROM Permission WHERE IdPermission = @Id");
-
-        if (result.rowsAffected[0] === 0) {
-            return res.status(404).json({ message: "Dato no encontrado" });
+        const permission = await findPermissionById(req.params.Id);
+        if (!permission) {
+            return res.status(404).json({ message: 'Dato no encontrado' });
         }
-        return res.json(result.recordset[0]);
+        return res.json(permission);
     } catch (error) {
         console.error('Error en el servidor:', error);
         res.status(500).send(error.message);
-    } finally {
-        if (pool) {
-            try {
-                await pool.close();
-            } catch (closeError) {
-                console.error('Error al cerrar la conexión a la base de datos:', closeError);
-            }
-        }
     }
 };
 
 export const createPermission = async (req, res) => {
-    let pool;
     try {
-        console.log(req.body);
-        pool = await getConnection();
+        const exists = await userExistsById(req.body.IdUser);
+        if (!exists) {
+            return res.status(400).json({ error: 'El IdUsuario no existe en dbo.Users' });
+        }
 
-        // Verifica si el IdUsuario existe en dbo.Users
-        const userResult = await pool.request()
-            .input('IdUser', sql.Int, req.body.IdUser)
-            .query('SELECT 1 FROM dbo.LoginUniPass WHERE IdLogin = @IdUser');
+        const fechaSolicitada = new Date(req.body.FechaSolicitada);
+        fechaSolicitada.setHours(fechaSolicitada.getHours() - 6);
+        const fechaSalida = new Date(req.body.FechaSalida);
+        fechaSalida.setHours(fechaSalida.getHours() - 6);
+        const fechaRegreso = new Date(req.body.FechaRegreso);
+        fechaRegreso.setHours(fechaRegreso.getHours() - 6);
 
-        if (userResult.recordset.length > 0) {
-            // Resta 6 horas a cada fecha
-            const fechaSolicitada = new Date(req.body.FechaSolicitada);
-            fechaSolicitada.setHours(fechaSolicitada.getHours() - 6);
-            const fechaSalida = new Date(req.body.FechaSalida);
-            fechaSalida.setHours(fechaSalida.getHours() - 6);
-            const fechaRegreso = new Date(req.body.FechaRegreso);
-            fechaRegreso.setHours(fechaRegreso.getHours() - 6);
+        const fechaSolicitadaUTC = fechaSolicitada.toISOString();
+        const fechaSalidaUTC = fechaSalida.toISOString();
+        const fechaRegresoUTC = fechaRegreso.toISOString();
 
-            // Convertir fechas a UTC
-            const fechaSolicitadaUTC = fechaSolicitada.toISOString();
-            const fechaSalidaUTC = fechaSalida.toISOString();
-            const fechaRegresoUTC = fechaRegreso.toISOString();
+        const idPermissionCreated = await createPermissionRecord({
+            fechaSolicitada: fechaSolicitadaUTC,
+            statusPermission: req.body.StatusPermission,
+            fechaSalida: fechaSalidaUTC,
+            fechaRegreso: fechaRegresoUTC,
+            motivo: req.body.Motivo,
+            idUser: req.body.IdUser,
+            idTipoSalida: req.body.IdTipoSalida
+        });
 
-            // Inserta en la tabla Permission
-            const result = await pool
-                .request()
-                .input('FechaSolicitada', sql.DateTime, fechaSolicitadaUTC)
-                .input('StatusPermission', sql.VarChar, req.body.StatusPermission)
-                .input('FechaSalida', sql.DateTime, fechaSalidaUTC)
-                .input('FechaRegreso', sql.DateTime, fechaRegresoUTC)
-                .input('Motivo', sql.VarChar, req.body.Motivo)
-                .input('IdUser', sql.Int, req.body.IdUser)
-                .input('IdTipoSalida', sql.Int, req.body.IdTipoSalida)
-                .input('Observaciones', sql.VarChar, 'Ninguna')
-                .query('INSERT INTO Permission (FechaSolicitada, StatusPermission, FechaSalida, FechaRegreso, Motivo, IdUser, IdTipoSalida, Observaciones) VALUES (@FechaSolicitada, @StatusPermission, @FechaSalida, @FechaRegreso, @Motivo, @IdUser, @IdTipoSalida, @Observaciones); SELECT SCOPE_IDENTITY() AS IdPermission');
+        let alumnoInfo = null;
+        try {
+            alumnoInfo = await findAlumnoBasicByLogin(req.body.IdUser);
+        } catch (queryError) {
+            console.error('Error obteniendo info alumno para socket:', queryError);
+        }
 
-            const idPermissionCreated = result.recordset[0].IdPermission;
+        res.json({
+            Id: idPermissionCreated,
+            FechaSolicitada: fechaSolicitadaUTC,
+            StatusPermission: req.body.StatusPermission,
+            FechaSalida: fechaSalidaUTC,
+            FechaRegreso: fechaRegresoUTC,
+            Motivo: req.body.Motivo,
+            MedioSalida: req.body.MedioSalida,
+            IdUser: req.body.IdUser,
+            IdTipoSalida: req.body.IdTipoSalida
+        });
 
-            // Socket.IO: obtener datos del alumno para notificar
-            let alumnoInfo = null;
-            try {
-                const alumnoResult = await pool.request()
-                    .input('IdUserSocket', sql.Int, req.body.IdUser)
-                    .query('SELECT Matricula, Nombre FROM LoginUniPass WHERE IdLogin = @IdUserSocket');
-                if (alumnoResult.recordset.length > 0) {
-                    alumnoInfo = alumnoResult.recordset[0];
-                }
-            } catch (queryError) {
-                console.error('Error obteniendo info alumno para socket:', queryError);
+        try {
+            const io = req.app.get('io');
+            if (alumnoInfo) {
+                emitToUser(io, alumnoInfo.Matricula, 'new_permission_request', {
+                    idPermission: idPermissionCreated,
+                    idTipoSalida: req.body.IdTipoSalida,
+                    matriculaAlumno: String(alumnoInfo.Matricula),
+                    nombreAlumno: alumnoInfo.Nombre,
+                    fechaSalida: fechaSalidaUTC,
+                    timestamp: new Date().toISOString()
+                });
             }
-
-            console.log(result);
-            res.json({
-                Id: idPermissionCreated,
-                FechaSolicitada: fechaSolicitadaUTC,
-                StatusPermission: req.body.StatusPermission,
-                FechaSalida: fechaSalidaUTC,
-                FechaRegreso: fechaRegresoUTC,
-                Motivo: req.body.Motivo,
-                MedioSalida: req.body.MedioSalida,
-                IdUser: req.body.IdUser,
-                IdTipoSalida: req.body.IdTipoSalida,
-            });
-
-            // Emitir new_permission_request al alumno (confirmacion).
-            // Los jefes/preceptores son notificados via 'new_authorization_assigned'
-            // al crearse los registros en Authorize (POST /authorize).
-            try {
-                const io = req.app.get('io');
-                if (alumnoInfo) {
-                    emitToUser(io, alumnoInfo.Matricula, 'new_permission_request', {
-                        idPermission: idPermissionCreated,
-                        idTipoSalida: req.body.IdTipoSalida,
-                        matriculaAlumno: String(alumnoInfo.Matricula),
-                        nombreAlumno: alumnoInfo.Nombre,
-                        fechaSalida: fechaSalidaUTC,
-                        timestamp: new Date().toISOString()
-                    });
-                }
-            } catch (socketError) {
-                console.error('[Socket] Error en createPermission:', socketError.message);
-            }
-        } else {
-            res.status(400).json({ error: 'El IdUsuario no existe en dbo.Users' });
+        } catch (socketError) {
+            console.error('[Socket] Error en createPermission:', socketError.message);
         }
     } catch (err) {
         console.error('Error en el servidor:', err);
         res.status(500).json({ error: 'Error al crear el permiso' });
-    } finally {
-        if (pool) {
-            try {
-                await pool.close();
-            } catch (closeError) {
-                console.error('Error al cerrar la conexión a la base de datos:', closeError);
-            }
-        }
     }
 };
 
-
-
 export const cancelPermission = async (req, res) => {
-    let pool;
     try {
-        pool = await getConnection();
-        const result = await pool
-            .request()
-            .input("Id", sql.Int, req.params.Id)
-            .input("StatusPermission", sql.VarChar, "Cancelado")
-            .query("UPDATE Permission SET StatusPermission = @StatusPermission WHERE IdPermission = @Id");
-
-        console.log(result);
-        if (result.rowsAffected[0] === 0) {
-            return res.status(404).json({ message: "Dato no encontrado" });
+        const cancelled = await cancelPermissionById(req.params.Id);
+        if (!cancelled) {
+            return res.status(404).json({ message: 'Dato no encontrado' });
         }
 
-        // Socket.IO: obtener empleados asignados para notificar cancelacion
         let empleados = [];
         try {
-            const authResult = await pool.request()
-                .input('IdPermissionSocket', sql.Int, req.params.Id)
-                .query('SELECT IdEmpleado FROM Authorize WHERE IdPermission = @IdPermissionSocket');
-            empleados = authResult.recordset;
+            empleados = await findEmpleadosAuthorizeByPermission(req.params.Id);
         } catch (queryError) {
             console.error('Error obteniendo empleados para socket:', queryError);
         }
 
-        res.json("Dato Actualizado");
+        res.json('Dato Actualizado');
 
-        // Emitir permission_cancelled a cada empleado asignado (+ cobertura)
         try {
             const io = req.app.get('io');
             const eventData = {
@@ -226,7 +146,7 @@ export const cancelPermission = async (req, res) => {
                 timestamp: new Date().toISOString()
             };
             for (const emp of empleados) {
-                await emitToEmpleado(io, pool, emp.IdEmpleado, 'permission_cancelled', eventData);
+                await emitToEmpleado(io, null, emp.IdEmpleado, 'permission_cancelled', eventData);
             }
         } catch (socketError) {
             console.error('[Socket] Error en cancelPermission:', socketError.message);
@@ -234,165 +154,64 @@ export const cancelPermission = async (req, res) => {
     } catch (error) {
         console.error('Error en el servidor:', error);
         res.status(500).send(error.message);
-    } finally {
-        if (pool) {
-            try {
-                await pool.close();
-            } catch (closeError) {
-                console.error('Error al cerrar la conexión a la base de datos:', closeError);
-            }
-        }
     }
 };
 
 export const deletePermission = async (req, res) => {
-    let pool;
     try {
-        pool = await getConnection();
-        const result = await pool.request()
-            .input("Id", sql.Int, req.params.Id)
-            .query("DELETE FROM Permission WHERE IdPermission = @Id");
-
-        console.log(result);
-        if (result.rowsAffected[0] === 0) {
-            return res.status(404).json({ message: "Dato no encontrado" });
+        const deleted = await deletePermissionById(req.params.Id);
+        if (!deleted) {
+            return res.status(404).json({ message: 'Dato no encontrado' });
         }
-        return res.json({ message: "Dato Eliminado" });
+        return res.json({ message: 'Dato Eliminado' });
     } catch (error) {
         console.error('Error en el servidor:', error);
         res.status(500).send(error.message);
-    } finally {
-        if (pool) {
-            try {
-                await pool.close();
-            } catch (closeError) {
-                console.error('Error al cerrar la conexión a la base de datos:', closeError);
-            }
-        }
     }
 };
 
 export const getPermissionForAutorizacion = async (req, res) => {
-    let pool;
     try {
-        pool = await getConnection();
-        const result = await pool.request()
-            .input("Id", sql.Int, req.params.Id)
-            .query(`SELECT Permission.*, TypeExit.*, LoginUniPass.* 
-FROM Permission 
-INNER JOIN Authorize ON Permission.IdPermission = Authorize.IdPermission 
-JOIN TypeExit ON Permission.IdTipoSalida = TypeExit.IdTypeExit 
-JOIN LoginUniPass ON Permission.IdUser = LoginUniPass.IdLogin 
-WHERE Authorize.IdEmpleado = @Id 
-AND Permission.FechaSalida BETWEEN DATEADD(DAY, -30, GETDATE()) AND DATEADD(DAY, 15, GETDATE());
-`)
-
-        if (result.rowsAffected[0] === 0) {
-            return res.status(404).json({ message: "Dato no encontrado" });
+        const permissions = await findPermissionsForAutorizacionByEmpleado(req.params.Id);
+        if (permissions.length === 0) {
+            return res.status(404).json({ message: 'Dato no encontrado' });
         }
-        return res.json(result.recordset);
+        return res.json(permissions);
     } catch (error) {
         console.error('Error en el servidor:', error);
         res.status(500).send(error.message);
-    } finally {
-        if (pool) {
-            try {
-                await pool.close();
-            } catch (closeError) {
-                console.error('Error al cerrar la conexión a la base de datos:', closeError);
-            }
-        }
-    } 
+    }
 };
 
 export const getPermissionForAutorizacionPrece = async (req, res) => {
-    let pool;
     try {
-        pool = await getConnection();
-        const result = await pool.request()
-            .input("Id", sql.Int, req.params.Id)
-            .query(`SELECT Permission.*, TypeExit.*, LoginUniPass.* 
-FROM Permission 
-INNER JOIN Authorize ON Permission.IdPermission = Authorize.IdPermission 
-JOIN TypeExit ON Permission.IdTipoSalida = TypeExit.IdTypeExit 
-JOIN LoginUniPass ON Permission.IdUser = LoginUniPass.IdLogin 
-WHERE Authorize.IdEmpleado = @Id 
-AND Permission.IdPermission IN (
-    SELECT A1.IdPermission 
-    FROM Authorize A1 
-    GROUP BY A1.IdPermission 
-    HAVING COUNT(A1.IdAuthorize) = 1
-)
-AND Permission.FechaSalida BETWEEN DATEADD(DAY, -30, GETDATE()) AND DATEADD(DAY, 15, GETDATE())
-
-UNION
-
-SELECT Permission.*, TypeExit.*, LoginUniPass.* 
-FROM Permission 
-INNER JOIN Authorize ON Permission.IdPermission = Authorize.IdPermission 
-JOIN TypeExit ON Permission.IdTipoSalida = TypeExit.IdTypeExit 
-JOIN LoginUniPass ON Permission.IdUser = LoginUniPass.IdLogin 
-WHERE Authorize.IdEmpleado = @Id 
-AND Permission.IdPermission IN (
-    SELECT A1.IdPermission 
-    FROM Authorize A1 
-    WHERE A1.StatusAuthorize = 'Aprobada' 
-    AND A1.IdAuthorize = (
-        SELECT TOP 1 A2.IdAuthorize 
-        FROM Authorize A2 
-        WHERE A2.IdPermission = A1.IdPermission 
-        ORDER BY A2.IdAuthorize
-    )
-)
-AND Permission.FechaSalida BETWEEN DATEADD(DAY, -30, GETDATE()) AND DATEADD(DAY, 15, GETDATE());`)
-
-        if (result.rowsAffected[0] === 0) {
+        const permissions = await findPermissionsForAutorizacionPreceByEmpleado(req.params.Id);
+        if (permissions.length === 0) {
             return res.json(null);
         }
-        return res.json(result.recordset);
+        return res.json(permissions);
     } catch (error) {
         console.error('Error en el servidor:', error);
         res.status(500).send(error.message);
-    } finally {
-        if (pool) {
-            try {
-                await pool.close();
-            } catch (closeError) {
-                console.error('Error al cerrar la conexión a la base de datos:', closeError);
-            }
-        }
     }
 };
 
 export const autorizarPermiso = async (req, res) => {
-    let pool;
     try {
-        pool = await getConnection();
-        const respuesta = await pool.request()
-            .input('IdPermiso', sql.Int, req.params.Id)
-            .input('StatusPermission', sql.VarChar, req.body.StatusPermission)
-            .input('Observaciones', sql.VarChar, req.body.Observaciones)
-            .query('UPDATE Permission SET StatusPermission = @StatusPermission, Observaciones = @Observaciones WHERE IdPermission = @IdPermiso');
-        if (respuesta.rowsAffected[0] === 0) {
-            return res.status(404).json({ message: "Dato no actualizado" });
+        const updated = await updatePermissionStatus(req.params.Id, req.body.StatusPermission, req.body.Observaciones);
+        if (!updated) {
+            return res.status(404).json({ message: 'Dato no actualizado' });
         }
 
-        // Socket.IO: obtener matricula del alumno para notificar
         let matriculaAlumno = null;
         try {
-            const alumnoResult = await pool.request()
-                .input('IdPermisoSocket', sql.Int, req.params.Id)
-                .query('SELECT L.Matricula FROM Permission P JOIN LoginUniPass L ON P.IdUser = L.IdLogin WHERE P.IdPermission = @IdPermisoSocket');
-            if (alumnoResult.recordset.length > 0) {
-                matriculaAlumno = alumnoResult.recordset[0].Matricula;
-            }
+            matriculaAlumno = await findAlumnoMatriculaByPermission(req.params.Id);
         } catch (queryError) {
             console.error('Error obteniendo matricula para socket:', queryError);
         }
 
-        res.json({ message: "Permiso actualizado correctamente" });
+        res.json({ message: 'Permiso actualizado correctamente' });
 
-        // Emitir permission_finalized al alumno
         try {
             const io = req.app.get('io');
             emitToUser(io, matriculaAlumno, 'permission_finalized', {
@@ -407,416 +226,105 @@ export const autorizarPermiso = async (req, res) => {
     } catch (error) {
         console.error('Error en el servidor:', error);
         res.status(500).send(error.message);
-    } finally {
-        if (pool) {
-            try {
-                await pool.close();
-            } catch (error) {
-                console.error('Error al cerrar la conexion a la base de datos:', error.message);
-            }
-        }
-    }
-}
-
-export const topPermissionStudent = async (req, res) => {
-    let pool;
-    try {
-        pool = await getConnection();
-        const respuesta = await pool
-            .request()
-            .input('IdLogin', sql.Int, req.params.Id)
-            .query(`SELECT TOP 10 *
-                    FROM Permission 
-                    WHERE IdUser = @IdLogin 
-                    ORDER BY FechaSolicitada DESC`);
-
-        if (respuesta.rowsAffected[0] === 0) {
-            return res.status(404).json({ message: "Dato no encontrado" });
-        }
-
-        return res.json(respuesta.recordset); // se devuelven todos
-    } catch (error) {
-        console.error('Error en el servidor:', error);
-        res.status(500).send(error.message);
-    } finally {
-        if (pool) {
-            try {
-                await pool.close();
-            } catch (error) {
-                console.error('Error al cerrar la conexión a la base de datos:', error.message);
-            }
-        }
     }
 };
 
+export const topPermissionStudent = async (req, res) => {
+    try {
+        const top = await findTop10PermissionsByStudent(req.params.Id);
+        if (top.length === 0) {
+            return res.status(404).json({ message: 'Dato no encontrado' });
+        }
+        return res.json(top);
+    } catch (error) {
+        console.error('Error en el servidor:', error);
+        res.status(500).send(error.message);
+    }
+};
 
 export const topPermissionEmployee = async (req, res) => {
-    let pool;
     try {
-        pool = await getConnection();
-        const respuesta = await pool
-            .request()
-            .input('Matricula', sql.Int, req.params.Id) //Se usa el valor de la matricula
-            .query(`SELECT TOP 10 Permission.*, TypeExit.*, LoginUniPass.* 
-                FROM Permission 
-                INNER JOIN Authorize ON Permission.IdPermission = Authorize.IdPermission 
-                JOIN TypeExit ON Permission.IdTipoSalida = TypeExit.IdTypeExit 
-                JOIN LoginUniPass ON Permission.IdUser = LoginUniPass.IdLogin 
-                WHERE Authorize.IdEmpleado = @Matricula 
-                ORDER BY Permission.FechaSolicitada DESC`);
-        if (respuesta.rowsAffected[0] === 0) {
-            return res.status(404).json({ message: "Dato no encontrado" });
+        const top = await findTop10PermissionsByEmployee(req.params.Id);
+        if (top.length === 0) {
+            return res.status(404).json({ message: 'Dato no encontrado' });
         }
-        return res.json(respuesta.recordset);
+        return res.json(top);
     } catch (error) {
         console.error('Error en el servidor:', error);
         res.status(500).send(error.message);
-    } finally {
-        if (pool) {
-            try {
-                await pool.close();
-            } catch (error) {
-                console.error('Error al cerrar la conexion a la base de datos:', error.message);
-            }
-        }
     }
-}
+};
 
 export const topPermissionPrece = async (req, res) => {
-    let pool;
     try {
-        pool = await getConnection();
-        const respuesta = await pool.request()
-            .input('Matricula', sql.Int, req.params.Id) //Se usa el valor de la matricula
-            .query(`SELECT TOP 10 *
-            FROM (
-            SELECT Permission.*, TypeExit.*, LoginUniPass.* FROM Permission 
-            INNER JOIN Authorize ON Permission.IdPermission = Authorize.IdPermission 
-            JOIN TypeExit ON Permission.IdTipoSalida = TypeExit.IdTypeExit 
-            JOIN LoginUniPass ON Permission.IdUser = LoginUniPass.IdLogin 
-            WHERE Authorize.IdEmpleado = @Matricula 
-            AND Permission.IdPermission IN (
-                SELECT A1.IdPermission 
-                FROM Authorize A1 
-                GROUP BY A1.IdPermission 
-                HAVING COUNT(A1.IdAuthorize) = 1
-            )
-
-            UNION
-
-            SELECT Permission.*, TypeExit.*, LoginUniPass.* FROM Permission 
-            INNER JOIN Authorize ON Permission.IdPermission = Authorize.IdPermission 
-            JOIN TypeExit ON Permission.IdTipoSalida = TypeExit.IdTypeExit 
-            JOIN LoginUniPass ON Permission.IdUser = LoginUniPass.IdLogin 
-            WHERE Authorize.IdEmpleado = @Matricula  
-            AND Permission.IdPermission IN (
-                SELECT A1.IdPermission 
-                FROM Authorize A1 
-                WHERE A1.StatusAuthorize = 'Aprobada' 
-                AND A1.IdAuthorize = (
-                SELECT TOP 1 A2.IdAuthorize 
-            FROM Authorize A2 
-            WHERE A2.IdPermission = A1.IdPermission 
-            ORDER BY A2.IdAuthorize
-                )
-            )
-            ) AS CombinedResults
-            ORDER BY FechaSolicitada DESC;`);
-        if (respuesta.rowsAffected[0] === 0) {
-            return res.status(404).json({ message: "Dato no encontrado" });
+        const top = await findTop10PermissionsByPrece(req.params.Id);
+        if (top.length === 0) {
+            return res.status(404).json({ message: 'Dato no encontrado' });
         }
-        return res.json(respuesta.recordset);
+        return res.json(top);
     } catch (error) {
         console.error('Error en el servidor:', error);
         res.status(500).send(error.message);
-    } finally {
-        if (pool) {
-            try {
-                await pool.close();
-            } catch (error) {
-                console.error('Error al cerrar la conexion a la base de datos:', error.message);
-            }
-        }
     }
-}
+};
 
 export const DashboardPermission = async (req, res) => {
-    let pool;
     try {
-        pool = await getConnection();
-        const respuesta = await pool.request()
-            .input('Matricula', sql.VarChar, req.params.IdPreceptor)
-            .query(`
-               WITH EmpleadoDormitorio AS (
-    SELECT TOP 1 Dormitorio AS Dorm FROM LoginUniPass WHERE Matricula = @Matricula
-),
-PermisosFiltrados AS (
-    SELECT DISTINCT P.IdPermission, P.StatusPermission
-    FROM Permission P
-    INNER JOIN Authorize A ON P.IdPermission = A.IdPermission
-    JOIN LoginUniPass L ON P.IdUser = L.IdLogin
-    CROSS APPLY (SELECT Dorm FROM EmpleadoDormitorio) AS D
-    WHERE 
-        (
-            D.Dorm = 5
-        )
-        OR
-        (
-            A.IdEmpleado = @Matricula
-            AND (
-                P.IdPermission IN (
-                    SELECT A1.IdPermission
-                    FROM Authorize A1
-                    GROUP BY A1.IdPermission
-                    HAVING COUNT(A1.IdAuthorize) = 1
-                )
-                OR
-                P.IdPermission IN (
-                    SELECT A1.IdPermission
-                    FROM Authorize A1
-                    WHERE A1.StatusAuthorize = 'Aprobada'
-                    AND A1.IdAuthorize = (
-                        SELECT TOP 1 A2.IdAuthorize
-                        FROM Authorize A2
-                        WHERE A2.IdPermission = A1.IdPermission
-                        ORDER BY A2.IdAuthorize
-                    )
-                )
-            )
-        )
-),
-Conteo AS (
-    SELECT StatusPermission, COUNT(*) AS Cantidad
-    FROM PermisosFiltrados
-    GROUP BY StatusPermission
-
-    UNION ALL
-
-    SELECT 'TOTAL', COUNT(*) FROM PermisosFiltrados
-)
-SELECT 
-    ISNULL([Aprobada], 0) AS Aprobadas,
-    ISNULL([Rechazada], 0) AS Rechazadas,
-    ISNULL([Pendiente], 0) AS Pendientes,
-    ISNULL([TOTAL], 0) AS Total
-FROM Conteo
-PIVOT (
-    SUM(Cantidad)
-    FOR StatusPermission IN ([Aprobada], [Rechazada], [Pendiente], [TOTAL])
-) AS ConteoPivot;
-
-            `);
-
-        const resultados = respuesta.recordset;
-
+        const resultados = await findDashboardPermissionCounts(req.params.IdPreceptor);
         if (!resultados || resultados.length === 0) {
-            return res.status(404).json({ message: "Dato no encontrado" });
+            return res.status(404).json({ message: 'Dato no encontrado' });
         }
-
         return res.json(resultados);
     } catch (error) {
         console.error('Error en el servidor:', error);
         return res.status(500).send(error.message);
-    } finally {
-        if (pool) {
-            try {
-                await pool.close();
-            } catch (error) {
-                console.error('Error al cerrar la conexión a la base de datos:', error.message);
-            }
-        }
     }
 };
 
 export const DashboardDocumentos = async (req, res) => {
-    let pool;
     try {
-        pool = await getConnection();
-        const respuesta = await pool.request()
-            .input('Matricula', sql.VarChar, req.params.IdPreceptor)
-            .query(`
-                WITH Empleado AS (
-  SELECT Dormitorio, TipoUser
-  FROM LoginUniPass
-  WHERE Matricula = @Matricula
-),
-Filtrados AS (
-  SELECT d.*
-  FROM Doctos d
-  JOIN LoginUniPass a ON d.IdLogin = a.IdLogin
-  WHERE a.TipoUser = 'ALUMNO'
-    AND (
-      -- Si el usuario es ADMINISTRATIVO y tiene dormitorio 5, mostrar documentos de dormitorios 1 al 4
-      ((SELECT TipoUser FROM Empleado) = 'ADMINISTRATIVO' AND (SELECT Dormitorio FROM Empleado) = 5 AND a.Dormitorio BETWEEN 1 AND 4)
-      -- De lo contrario, solo del dormitorio del empleado
-      OR ((SELECT Dormitorio FROM Empleado) = a.Dormitorio AND (SELECT Dormitorio FROM Empleado) <> 5)
-    )
-)
-SELECT
-  COUNT(*) AS Total,
-  SUM(CASE WHEN StatusRevision = 'Aprobado' THEN 1 ELSE 0 END) AS Aprobado,
-  SUM(CASE WHEN StatusRevision = 'Pendiente' THEN 1 ELSE 0 END) AS Pendiente
-FROM Filtrados;
-
-            `);
-
-        const resultados = respuesta.recordset;
-
+        const resultados = await findDashboardDocumentosCounts(req.params.IdPreceptor);
         if (!resultados || resultados.length === 0) {
-            return res.status(404).json({ message: "Dato no encontrado" });
+            return res.status(404).json({ message: 'Dato no encontrado' });
         }
-
         return res.json(resultados);
     } catch (error) {
         console.error('Error en el servidor:', error);
         return res.status(500).send(error.message);
-    } finally {
-        if (pool) {
-            try {
-                await pool.close();
-            } catch (error) {
-                console.error('Error al cerrar la conexión a la base de datos:', error.message);
-            }
-        }
     }
 };
 
 export const filtrarPermisos = async (req, res) => {
-    const {
-      fechaInicio,
-      fechaFin,
-      status,
-      nombre,
-      matricula: filtroMatricula
-    } = req.query;
+    const { fechaInicio, fechaFin, status, nombre, matricula: filtroMatricula } = req.query;
     const idEmpleado = parseInt(req.params.IdPreceptor, 10);
-  
-    let pool;
+
     try {
-      pool = await getConnection();
-  
-      // 1) Obtener el tipo de usuario
-      const userResult = await pool.request()
-        .input('MatriculaInput', sql.VarChar(20), idEmpleado.toString())
-        .query(`
-          SELECT TipoUser
-          FROM LoginUniPass
-          WHERE Matricula = @MatriculaInput
-        `);
-  
-      if (!userResult.recordset.length) {
-        return res.status(404).json({ message: 'Usuario no encontrado.' });
-      }
-  
-      const { TipoUser } = userResult.recordset[0];
-  
-      // 2) Preparar los parámetros comunes
-      const request = pool.request()
-        .input('FechaInicio', sql.Date, fechaInicio || null)
-        .input('FechaFin',    sql.Date, fechaFin    || null)
-        .input('Status',      sql.VarChar(20), status || null)
-        .input('Nombre',      sql.VarChar(100), nombre || null)
-        .input('Matricula',   sql.VarChar(20), filtroMatricula || null)
-        .input('IdEmpleado',  sql.Int, idEmpleado);
-  
-      let consultaSQL;
-  
-      // 3) Armar la consulta según el tipo de usuario
-      if (TipoUser === 'ADMINISTRATIVO') {
-        consultaSQL = `
-          SELECT P.*, T.*, L.*
-          FROM Permission P
-          INNER JOIN TypeExit    T ON P.IdTipoSalida = T.IdTypeExit
-          INNER JOIN LoginUniPass L ON P.IdUser       = L.IdLogin
-          WHERE
-            (@FechaInicio IS NULL OR P.FechaSalida   >= @FechaInicio
-                                  AND P.FechaSalida   <  DATEADD(DAY, 1, @FechaInicio)) AND
-            (@FechaFin    IS NULL OR P.FechaRegreso  >= @FechaFin
-                                  AND P.FechaRegreso  <  DATEADD(DAY, 1, @FechaFin)) AND
-            (@Status      IS NULL OR P.StatusPermission = @Status) AND
-            (@Nombre      IS NULL OR L.Nombre    LIKE '%' + @Nombre    + '%') AND
-            (@Matricula   IS NULL OR L.Matricula LIKE '%' + @Matricula + '%')
-          ORDER BY P.FechaSolicitada DESC;
-        `;
-      }
-      else if (TipoUser === 'PRECEPTOR') {
-        consultaSQL = `
-          WITH PermisosFiltrados AS (
-            -- permisos con una sola autorización registrada
-            SELECT P.*, T.*, L.*
-            FROM Permission P
-            INNER JOIN Authorize    A ON P.IdPermission  = A.IdPermission
-            INNER JOIN TypeExit     T ON P.IdTipoSalida  = T.IdTypeExit
-            INNER JOIN LoginUniPass L ON P.IdUser        = L.IdLogin
-            WHERE A.IdEmpleado = @IdEmpleado
-              AND P.IdPermission IN (
-                SELECT A1.IdPermission
-                FROM Authorize A1
-                GROUP BY A1.IdPermission
-                HAVING COUNT(A1.IdAuthorize) = 1
-              )
-            UNION
-            -- permisos con autorización aprobada (última)
-            SELECT P.*, T.*, L.*
-            FROM Permission P
-            INNER JOIN Authorize    A ON P.IdPermission  = A.IdPermission
-            INNER JOIN TypeExit     T ON P.IdTipoSalida  = T.IdTypeExit
-            INNER JOIN LoginUniPass L ON P.IdUser        = L.IdLogin
-            WHERE A.IdEmpleado = @IdEmpleado
-              AND P.IdPermission IN (
-                SELECT A1.IdPermission
-                FROM Authorize A1
-                WHERE A1.StatusAuthorize = 'Aprobada'
-                  AND A1.IdAuthorize = (
-                    SELECT TOP 1 A2.IdAuthorize
-                    FROM Authorize A2
-                    WHERE A2.IdPermission = A1.IdPermission
-                    ORDER BY A2.IdAuthorize
-                  )
-              )
-          )
-          SELECT *
-          FROM PermisosFiltrados
-          WHERE
-            (@FechaInicio IS NULL OR FechaSalida   >= @FechaInicio
-                                  AND FechaSalida   <  DATEADD(DAY, 1, @FechaInicio)) AND
-            (@FechaFin    IS NULL OR FechaRegreso  >= @FechaFin
-                                  AND FechaRegreso  <  DATEADD(DAY, 1, @FechaFin)) AND
-            (@Status      IS NULL OR StatusPermission = @Status) AND
-            (@Nombre      IS NULL OR Nombre    LIKE '%' + @Nombre    + '%') AND
-            (@Matricula   IS NULL OR Matricula LIKE '%' + @Matricula + '%')
-          ORDER BY FechaSolicitada DESC;
-        `;
-      }
-      else {
-        return res
-          .status(403)
-          .json({ message: 'El tipo de usuario no tiene permisos para consultar salidas.' });
-      }
-  
-      // 4) Ejecutar y devolver resultado
-      const result = await request.query(consultaSQL);
-  
-      if (!result.recordset.length) {
-        return res
-          .status(404)
-          .json({ message: 'No se encontraron permisos con los filtros aplicados.' });
-      }
-  
-      res.json(result.recordset);
-    }
-    catch (error) {
-      console.error('Error al filtrar permisos:', error);
-      res.status(500).send(error.message);
-    }
-    finally {
-      if (pool) {
-        try {
-          await pool.close();
+        const tipoUser = await findUserTipoByMatricula(idEmpleado.toString());
+
+        if (!tipoUser) {
+            return res.status(404).json({ message: 'Usuario no encontrado.' });
         }
-        catch (err) {
-          console.error('Error al cerrar la conexión:', err.message);
+
+        let permisos;
+        if (tipoUser === 'ADMINISTRATIVO') {
+            permisos = await filterPermisosAdministrativo({
+                fechaInicio, fechaFin, status, nombre, matricula: filtroMatricula, idEmpleado
+            });
+        } else if (tipoUser === 'PRECEPTOR') {
+            permisos = await filterPermisosPreceptor({
+                fechaInicio, fechaFin, status, nombre, matricula: filtroMatricula, idEmpleado
+            });
+        } else {
+            return res.status(403).json({ message: 'El tipo de usuario no tiene permisos para consultar salidas.' });
         }
-      }
+
+        if (!permisos.length) {
+            return res.status(404).json({ message: 'No se encontraron permisos con los filtros aplicados.' });
+        }
+
+        res.json(permisos);
+    } catch (error) {
+        console.error('Error al filtrar permisos:', error);
+        res.status(500).send(error.message);
     }
-  };
+};

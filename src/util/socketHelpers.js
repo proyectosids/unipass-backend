@@ -1,4 +1,5 @@
 import sql from 'mssql';
+import { withConnection } from '../database/connection.js';
 
 // Emite un evento a la sala user_{matricula} con log.
 export function emitToUser(io, matricula, eventName, data) {
@@ -33,7 +34,10 @@ export async function getMatriculasToNotify(pool, matricula) {
 }
 
 // Emite a un empleado y a todos los que lo cubren actualmente.
+// pool puede ser null: en ese caso abrimos uno con withConnection.
 export async function emitToEmpleado(io, pool, matricula, eventName, data) {
-    const matriculas = await getMatriculasToNotify(pool, matricula);
+    const matriculas = pool
+        ? await getMatriculasToNotify(pool, matricula)
+        : await withConnection((p) => getMatriculasToNotify(p, matricula));
     for (const m of matriculas) emitToUser(io, m, eventName, data);
 }
