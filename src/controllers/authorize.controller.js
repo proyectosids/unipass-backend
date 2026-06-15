@@ -12,33 +12,38 @@ import { emitToUser, emitToEmpleado } from '../util/socketHelpers.js';
 
 export const createAuthorize = async (req, res) => {
     try {
-        const newId = await createAuthorizeRepo({
+        const result = await createAuthorizeRepo({
             idEmpleado: req.body.IdEmpleado,
             noDepto: req.body.NoDepto,
             idPermission: req.body.IdPermission,
             statusAuthorize: req.body.StatusAuthorize
         });
-        if (newId === null) {
+        if (result === null) {
             return res.status(404).json({ message: 'No se puede guardar el archivo' });
         }
 
         res.json({
-            Id: newId,
+            Id: result.id,
             IdEmpleado: req.body.IdEmpleado,
             NoDepto: req.body.NoDepto,
             IdPermission: req.body.IdPermission,
-            StatusAuthorize: req.body.StatusAuthorize
+            StatusAuthorize: req.body.StatusAuthorize,
+            DualRole: result.dualRoleApplied
         });
 
-        try {
-            const io = req.app.get('io');
-            await emitToEmpleado(io, null, req.body.IdEmpleado, 'new_authorization_assigned', {
-                idPermission: req.body.IdPermission,
-                status: req.body.StatusAuthorize,
-                timestamp: new Date().toISOString()
-            });
-        } catch (socketError) {
-            console.error('[Socket] Error en createAuthorize:', socketError.message);
+        // No emitimos cuando se aplico DualRole: ya hubo un emit en el primer POST
+        // y la app no debe recibir una segunda notificacion para la misma persona.
+        if (!result.dualRoleApplied) {
+            try {
+                const io = req.app.get('io');
+                await emitToEmpleado(io, null, req.body.IdEmpleado, 'new_authorization_assigned', {
+                    idPermission: req.body.IdPermission,
+                    status: req.body.StatusAuthorize,
+                    timestamp: new Date().toISOString()
+                });
+            } catch (socketError) {
+                console.error('[Socket] Error en createAuthorize:', socketError.message);
+            }
         }
     } catch (error) {
         console.error('Error en el servidor:', error);
@@ -128,7 +133,14 @@ export const AdvancePermission = async (req, res) => {
         if (authorizes.length === 0) {
             return res.status(404).json({ message: 'Dato no encontrado' });
         }
-        return res.json(authorizes);
+
+        const enriched = authorizes.map((row) => ({
+            ...row,
+            DualRole: Boolean(row.DualRole),
+            Roles: row.DualRole ? ['Jefe de trabajo', 'Preceptor'] : null
+        }));
+
+        return res.json(enriched);
     } catch (error) {
         console.error('Error en el servidor:', error);
         res.status(500).json({ error: error.message });

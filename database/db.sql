@@ -153,3 +153,9 @@ CREATE UNIQUE INDEX IX_RefreshToken_TokenHash ON RefreshToken (TokenHash);
 
 -- Limpieza periodica (ejecutar como job o manualmente):
 -- DELETE FROM RefreshToken WHERE ExpiresAt < GETDATE() OR (RevokedAt IS NOT NULL AND RevokedAt < DATEADD(DAY, -30, GETDATE()));
+
+-- ============================================================
+-- Authorize: enriquecimiento para UI de aprobaciones
+-- ============================================================
+ALTER TABLE Authorize ADD FechaAprobacion DATETIME NULL;
+ALTER TABLE Authorize ADD DualRole BIT NOT NULL DEFAULT 0;
