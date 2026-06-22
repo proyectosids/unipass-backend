@@ -112,6 +112,14 @@ export const updateTokenFCM = (matricula, tokenCFM) =>
         return result.rowsAffected[0] > 0;
     });
 
+export const clearTokenFCMByMatricula = (matricula) =>
+    withConnection(async (pool) => {
+        await pool
+            .request()
+            .input('Matricula', sql.VarChar, matricula)
+            .query('UPDATE LoginUniPass SET TokenCFM = NULL WHERE Matricula = @Matricula');
+    });
+
 // === Cargo / Position ===
 
 export const findIdCargoDelegadoByMatricula = (matricula) =>

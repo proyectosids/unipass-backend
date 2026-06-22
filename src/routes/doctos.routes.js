@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { deleteFileDoc, getDocumentsByUser, saveDocument, getProfile, uploadProfile, getExpedientesAlumnos, getArchivosAlumno, aprobarDocumento } from "../controllers/doctos.controller.js";
+import { deleteFileDoc, getDocumentsByUser, saveDocument, getProfile, uploadProfile, getExpedientesAlumnos, getArchivosAlumno, aprobarDocumento, rejectDocument } from "../controllers/doctos.controller.js";
 import { Subirimagen } from "../Middleware/storage.js"; 
 import multer from "multer";
 
@@ -20,5 +20,7 @@ router.get("/getExpediente/:IdDormi", getExpedientesAlumnos)
 router.get("/getArchivos/:Dormitorio/:Nombre?/:Apellidos?/:Matricula?", getArchivosAlumno);
 
 router.put("/statusRevision/:Id", aprobarDocumento)
+
+router.put("/doctosMul/reject/:Id", rejectDocument)
 
 export default router;

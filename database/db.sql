@@ -159,3 +159,12 @@ CREATE UNIQUE INDEX IX_RefreshToken_TokenHash ON RefreshToken (TokenHash);
 -- ============================================================
 ALTER TABLE Authorize ADD FechaAprobacion DATETIME NULL;
 ALTER TABLE Authorize ADD DualRole BIT NOT NULL DEFAULT 0;
+
+-- ============================================================
+-- Doctos: soporte para rechazo de documentos
+-- ============================================================
+ALTER TABLE Doctos
+ADD MotivoRechazo VARCHAR(80) NULL,
+    ComentarioRechazo NVARCHAR(500) NULL,
+    RechazadoPor VARCHAR(20) NULL,
+    FechaRechazo DATETIME NULL;

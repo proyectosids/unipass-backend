@@ -6,9 +6,16 @@ import {
     deleteDocument,
     findExpedientesByDormitorio,
     findArchivosFiltered,
-    approveDocument
+    approveDocument,
+    rejectDocument as rejectDocumentRepo,
+    findRejectNotificationContext
 } from '../repositories/doctos.repo.js';
+import { findUserByMatricula } from '../repositories/user.repo.js';
 import { deleteUploadedFile } from '../util/fileStorage.js';
+import { emitToUser } from '../util/socketHelpers.js';
+import { notifyDocumentRejection } from '../util/notifications.js';
+
+const PRECEPTOR_ROLES = new Set(['PRECEPTOR', 'EMPLEADO', 'VIGILANCIA']);
 
 export const getProfile = async (req, res) => {
     try {
@@ -66,7 +73,7 @@ export const saveDocument = async (req, res) => {
         console.error('Error en el servidor:', error);
         return res.status(500).json({ message: 'Error en el proceso de carga' });
     } finally {
-        // Rollback: si el INSERT no termino bien y ya habia archivo subido, borrarlo.
+        // Rollback: si el INSERT/UPDATE no termino bien y ya habia archivo subido, borrarlo.
         if (!insertOk && filePath) {
             await deleteUploadedFile(filePath);
         }
@@ -187,5 +194,80 @@ export const aprobarDocumento = async (req, res) => {
     } catch (error) {
         console.error('Error actualizando estado de revisión:', error);
         return res.status(500).json({ message: 'Error en el servidor' });
+    }
+};
+
+export const rejectDocument = async (req, res) => {
+    try {
+        const idLogin = parseInt(req.params.Id, 10);
+        const { IdDocumento, Motivo, Comentario, MatriculaPreceptor } = req.body;
+
+        if (!idLogin || !IdDocumento || !Motivo || !MatriculaPreceptor) {
+            return res.status(400).json({
+                message: 'idLogin, IdDocumento, Motivo y MatriculaPreceptor son obligatorios'
+            });
+        }
+
+        const preceptor = await findUserByMatricula(MatriculaPreceptor);
+        if (!preceptor) {
+            return res.status(403).json({ message: 'Preceptor no encontrado' });
+        }
+        if (!PRECEPTOR_ROLES.has(preceptor.TipoUser)) {
+            return res.status(403).json({ message: 'No tienes permisos para rechazar documentos' });
+        }
+
+        const rejected = await rejectDocumentRepo({
+            idLogin,
+            idDocumento: IdDocumento,
+            motivo: Motivo,
+            comentario: Comentario,
+            matriculaPreceptor: MatriculaPreceptor
+        });
+
+        if (!rejected) {
+            return res.status(404).json({ message: 'Documento no encontrado' });
+        }
+
+        res.status(200).json({ message: 'Documento rechazado' });
+
+        let context = null;
+        try {
+            context = await findRejectNotificationContext(idLogin, IdDocumento);
+        } catch (queryError) {
+            console.error('Error obteniendo contexto para notificacion:', queryError.message);
+        }
+
+        if (context) {
+            try {
+                const io = req.app.get('io');
+                emitToUser(io, context.Matricula, 'document_rejected', {
+                    idLogin,
+                    idDocumento: IdDocumento,
+                    tipoDocumento: context.TipoDocumento,
+                    motivo: Motivo,
+                    comentario: Comentario || null,
+                    rechazadoPor: MatriculaPreceptor,
+                    timestamp: new Date().toISOString()
+                });
+            } catch (socketError) {
+                console.error('[Socket] Error en rejectDocument:', socketError.message);
+            }
+
+            try {
+                await notifyDocumentRejection({
+                    tokenFCM: context.TokenFCM,
+                    tipoDocumento: context.TipoDocumento,
+                    motivo: Motivo,
+                    matricula: context.Matricula
+                });
+            } catch (fcmError) {
+                console.error('[FCM] Error en notifyDocumentRejection:', fcmError.message);
+            }
+        }
+    } catch (error) {
+        console.error('Error en el servidor:', error);
+        if (!res.headersSent) {
+            return res.status(500).json({ message: 'Error al rechazar el documento' });
+        }
     }
 };
