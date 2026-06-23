@@ -10,7 +10,7 @@ import bedroomRoutes from "./routes/bedroom.routes.js";
 import checkRoutes from "./routes/checks.routes.js"
 import pointRoutes from "./routes/point.routes.js"
 import positionRoutes from "./routes/position.routes.js"
-import userchecksRoutes from "./routes/usercheckers.routes.js"
+import checkerGrantRoutes from "./routes/checkerGrant.routes.js"
 import morgan from 'morgan';
 
 
@@ -44,6 +44,6 @@ app.use(pointRoutes);
 
 app.use(positionRoutes);
 
-app.use(userchecksRoutes);
+app.use(checkerGrantRoutes);
 
 export default app;

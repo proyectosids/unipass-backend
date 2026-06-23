@@ -27,6 +27,7 @@ import {
     revokeRefreshTokenById,
     revokeRefreshTokenByHash
 } from '../repositories/refreshToken.repo.js';
+import { findCapabilitiesByLogin } from '../repositories/checkerGrant.repo.js';
 
 export const getUser = async (req, res) => {
     try {
@@ -113,6 +114,15 @@ export const loginUser = async (req, res) => {
             deviceInfo
         });
 
+        // Capabilities aditivas (p.ej. CHECKER) para que el cliente muestre tabs
+        // segun permisos y no segun TipoUser. No rompe clientes viejos (campo extra).
+        let capabilities = [];
+        try {
+            capabilities = await findCapabilitiesByLogin(user.IdLogin);
+        } catch (capError) {
+            console.error('[Auth] Error obteniendo capabilities:', capError.message);
+        }
+
         console.log(`[Auth] Login: userId=${user.IdLogin}`);
 
         return res.json({
@@ -120,7 +130,8 @@ export const loginUser = async (req, res) => {
             accessToken,
             refreshToken,
             token: accessToken,
-            user
+            user,
+            capabilities
         });
     } catch (error) {
         console.error('[Auth] Error en login:', error);
@@ -201,8 +212,14 @@ export const logoutUser = async (req, res) => {
     }
 };
 
-export const verifySessionToken = (req, res) => {
-    res.status(200).json({ success: true, user: req.user });
+export const verifySessionToken = async (req, res) => {
+    let capabilities = [];
+    try {
+        capabilities = await findCapabilitiesByLogin(req.user.id);
+    } catch (capError) {
+        console.error('[Auth] Error obteniendo capabilities:', capError.message);
+    }
+    res.status(200).json({ success: true, user: req.user, capabilities });
 };
 
 //==================================== FIN LOGIN ================================================

@@ -127,7 +127,18 @@ export const findPendingChecksVigilanciaRegreso = () =>
         return result.recordset;
     });
 
-export const updateCheckPoint = (idCheck, { fechaCheck, estatus, observaciones }) =>
+// Datos minimos del check para autorizar la confirmacion (grant + scope).
+export const findCheckAuthInfo = (idCheck) =>
+    withConnection(async (pool) => {
+        const result = await pool
+            .request()
+            .input('IdCheck', sql.Int, idCheck)
+            .query(`SELECT IdCheck, IdPoint, Accion, Estatus, IdPermission
+                    FROM CheckPoints WHERE IdCheck = @IdCheck`);
+        return result.recordset[0] || null;
+    });
+
+export const updateCheckPoint = (idCheck, { fechaCheck, estatus, observaciones, confirmadoPor = null }) =>
     withConnection(async (pool) => {
         const result = await pool
             .request()
@@ -135,8 +146,12 @@ export const updateCheckPoint = (idCheck, { fechaCheck, estatus, observaciones }
             .input('FechaCheck', sql.DateTime, fechaCheck)
             .input('Estatus', sql.VarChar, estatus)
             .input('Observacion', sql.VarChar, observaciones)
+            .input('ConfirmadoPor', sql.Int, confirmadoPor)
             .query(`UPDATE CheckPoints
-                    SET FechaCheck = @FechaCheck, Estatus = @Estatus, Observaciones = @Observacion
+                    SET FechaCheck = @FechaCheck,
+                        Estatus = @Estatus,
+                        Observaciones = @Observacion,
+                        ConfirmadoPor = @ConfirmadoPor
                     WHERE IdCheck = @IdCheck`);
         return result.rowsAffected[0] > 0;
     });

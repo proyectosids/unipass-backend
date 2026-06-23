@@ -8,6 +8,16 @@ export const newUser = async (req, res) => {
   try {
     console.log('Solicitud recibida:', req.body);  // Depuración
 
+    // El modelo de "checker como cuenta dedicada" (TipoUser='DEPARTAMENTO') fue
+    // retirado. Un checker ahora es una capability (CheckerGrant) sobre una cuenta
+    // real existente. Se rechaza la creacion de nuevas cuentas DEPARTAMENTO.
+    if (req.body.TipoUser === 'DEPARTAMENTO') {
+      return res.status(400).json({
+        message: 'El rol DEPARTAMENTO fue retirado. Asigna la capability de checker con POST /checkerGrant.',
+        code: 'DEPARTAMENTO_RETIRED'
+      });
+    }
+
     // Encripta la contraseña antes de enviarla a la base de datos
     const hashedPassword = await hashData(req.body.Contraseña);
 

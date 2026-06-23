@@ -5,8 +5,10 @@ import {
     findPendingChecksVigilanciaSalida,
     findPendingChecksVigilanciaRegreso,
     updateCheckPoint,
-    findCheckInfoForSocket
+    findCheckInfoForSocket,
+    findCheckAuthInfo
 } from '../repositories/checks.repo.js';
+import { findActiveGrant } from '../repositories/checkerGrant.repo.js';
 import { emitToUser } from '../util/socketHelpers.js';
 
 export const createChecksPermission = async (req, res) => {
@@ -86,11 +88,32 @@ export const putCheckPoint = async (req, res) => {
     try {
         const { id } = req.params;
         const { FechaCheck, Estatus, Observaciones } = req.body;
+        const idLogin = req.user.id; // token exigido por la ruta
+
+        // Autorizacion: el usuario debe tener un CheckerGrant vigente sobre el
+        // punto del check, y el Scope debe cubrir la Accion (SALIDA/RETORNO).
+        const checkInfoAuth = await findCheckAuthInfo(id);
+        if (!checkInfoAuth) {
+            return res.status(404).json({ message: 'CheckPoint no encontrado', code: 'CHECK_NOT_FOUND' });
+        }
+
+        const grant = await findActiveGrant(idLogin, checkInfoAuth.IdPoint);
+        const scopeCubre = grant && (grant.Scope === 'AMBOS' || grant.Scope === checkInfoAuth.Accion);
+        if (!scopeCubre) {
+            return res.status(403).json({
+                message: 'No estas autorizado para confirmar este check',
+                code: 'NOT_AUTHORIZED_CHECKER'
+            });
+        }
+
+        // Solo registramos ConfirmadoPor cuando el check pasa a Confirmada.
+        const confirmadoPor = Estatus === 'Confirmada' ? idLogin : null;
 
         const updated = await updateCheckPoint(id, {
             fechaCheck: FechaCheck,
             estatus: Estatus,
-            observaciones: Observaciones
+            observaciones: Observaciones,
+            confirmadoPor
         });
 
         if (!updated) {
