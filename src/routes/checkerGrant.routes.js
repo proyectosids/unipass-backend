@@ -3,7 +3,7 @@ import { verifyToken } from '../Middleware/verifityToken.js';
 import { requireRole } from '../Middleware/authorizeRoles.js';
 import {
     postCheckerGrant,
-    getCheckerGrantsByPoint,
+    getCheckerGrantsScoped,
     getCheckerGrantsByUser,
     putCheckerGrant,
     deleteCheckerGrant,
@@ -18,7 +18,7 @@ const canGrant = requireRole('PRECEPTOR', 'VIGILANCIA');
 
 // Gestion de grants (solo PRECEPTOR / VIGILANCIA)
 router.post('/checkerGrant', verifyToken, canGrant, postCheckerGrant);
-router.get('/checkerGrants/:idPoint', verifyToken, canGrant, getCheckerGrantsByPoint);
+router.get('/checkerGrants', verifyToken, canGrant, getCheckerGrantsScoped);
 router.get('/checkerGrantsByUser/:idLogin', verifyToken, canGrant, getCheckerGrantsByUser);
 router.put('/checkerGrant/:idGrant', verifyToken, canGrant, putCheckerGrant);
 router.delete('/checkerGrant/:idGrant', verifyToken, canGrant, deleteCheckerGrant);

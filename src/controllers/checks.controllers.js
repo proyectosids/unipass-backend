@@ -6,10 +6,20 @@ import {
     findPendingChecksVigilanciaRegreso,
     updateCheckPoint,
     findCheckInfoForSocket,
-    findCheckAuthInfo
+    findCheckAuthInfo,
+    findPermissionSteps
 } from '../repositories/checks.repo.js';
-import { findActiveGrant } from '../repositories/checkerGrant.repo.js';
+import { findActiveGrantByTipo } from '../repositories/checkerGrant.repo.js';
 import { emitToUser } from '../util/socketHelpers.js';
+
+// Paso (1..4) de un check segun su accion y tipo de punto.
+const pasoDe = (accion, nombrePunto) => {
+    if (accion === 'SALIDA' && nombrePunto === 'Dormitorio') return 1;
+    if (accion === 'SALIDA' && nombrePunto === 'Caseta') return 2;
+    if (accion === 'RETORNO' && nombrePunto === 'Caseta') return 3;
+    if (accion === 'RETORNO' && nombrePunto === 'Dormitorio') return 4;
+    return null;
+};
 
 export const createChecksPermission = async (req, res) => {
     try {
@@ -90,20 +100,38 @@ export const putCheckPoint = async (req, res) => {
         const { FechaCheck, Estatus, Observaciones } = req.body;
         const idLogin = req.user.id; // token exigido por la ruta
 
-        // Autorizacion: el usuario debe tener un CheckerGrant vigente sobre el
-        // punto del check, y el Scope debe cubrir la Accion (SALIDA/RETORNO).
         const checkInfoAuth = await findCheckAuthInfo(id);
         if (!checkInfoAuth) {
             return res.status(404).json({ message: 'CheckPoint no encontrado', code: 'CHECK_NOT_FOUND' });
         }
 
-        const grant = await findActiveGrant(idLogin, checkInfoAuth.IdPoint);
+        // Autorizacion por TIPO de punto: el usuario debe tener un CheckerGrant
+        // vigente del tipo del check (Caseta = cualquier dorm; Dormitorio = el del
+        // alumno) y cuyo Scope cubra la Accion (SALIDA/RETORNO).
+        const idDormitorio = checkInfoAuth.NombrePunto === 'Dormitorio' ? checkInfoAuth.AlumnoDormitorio : null;
+        const grant = await findActiveGrantByTipo(idLogin, checkInfoAuth.NombrePunto, idDormitorio);
         const scopeCubre = grant && (grant.Scope === 'AMBOS' || grant.Scope === checkInfoAuth.Accion);
         if (!scopeCubre) {
             return res.status(403).json({
                 message: 'No estas autorizado para confirmar este check',
                 code: 'NOT_AUTHORIZED_CHECKER'
             });
+        }
+
+        // Enforce del orden 1->2->3->4 solo al confirmar: el paso anterior de esa
+        // salida debe estar Confirmada.
+        if (Estatus === 'Confirmada') {
+            const pasoActual = pasoDe(checkInfoAuth.Accion, checkInfoAuth.NombrePunto);
+            if (pasoActual && pasoActual > 1) {
+                const steps = await findPermissionSteps(checkInfoAuth.IdPermission);
+                const previo = steps.find((s) => s.Paso === pasoActual - 1);
+                if (previo && previo.Estatus !== 'Confirmada') {
+                    return res.status(409).json({
+                        message: 'Debes confirmar el check anterior de esta salida primero',
+                        code: 'CHECK_OUT_OF_ORDER'
+                    });
+                }
+            }
         }
 
         // Solo registramos ConfirmadoPor cuando el check pasa a Confirmada.

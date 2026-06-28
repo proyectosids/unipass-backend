@@ -1,6 +1,6 @@
 import {
     createOrReactivateGrant,
-    findGrantsByPoint,
+    findGrantsScoped,
     findGrantsByLogin,
     findCapabilitiesByLogin,
     setGrantActivo,
@@ -10,15 +10,27 @@ import {
 const SCOPES = new Set(['SALIDA', 'RETORNO', 'AMBOS']);
 const VIGENCIAS = new Set(['TEMPORAL', 'PERMANENTE']);
 
-// POST /checkerGrant  { IdLogin, IdPoint, Scope, Vigencia, FechaExpira? }
-// AsignadoPor se toma del token (req.user.id). Solo PRECEPTOR/VIGILANCIA (ruta).
+// Tipo de checador segun el rol que asigna/consulta.
+const tipoPorRol = (tipoUser) =>
+    tipoUser === 'PRECEPTOR' ? 'Dormitorio'
+    : tipoUser === 'VIGILANCIA' ? 'Caseta'
+    : null;
+
+// POST /checkerGrant  { IdLogin, Scope, Vigencia, FechaExpira? }
+// El alcance (Tipo/IdDormitorio) y AsignadoPor se derivan del token, NO del cliente:
+//   PRECEPTOR  -> Tipo='Dormitorio', IdDormitorio = req.user.dormitorio
+//   VIGILANCIA -> Tipo='Caseta'
 export const postCheckerGrant = async (req, res) => {
     try {
-        const { IdLogin, IdPoint, Scope, Vigencia, FechaExpira } = req.body || {};
+        const { IdLogin, Scope, Vigencia, FechaExpira } = req.body || {};
 
-        if (!IdLogin || !IdPoint || !Scope || !Vigencia) {
+        const tipo = tipoPorRol(req.user.tipo);
+        if (!tipo) {
+            return res.status(403).json({ message: 'No tienes permisos para asignar checadores', code: 'FORBIDDEN_ROLE' });
+        }
+        if (!IdLogin || !Scope || !Vigencia) {
             return res.status(400).json({
-                message: 'IdLogin, IdPoint, Scope y Vigencia son obligatorios',
+                message: 'IdLogin, Scope y Vigencia son obligatorios',
                 code: 'MISSING_FIELDS'
             });
         }
@@ -37,7 +49,8 @@ export const postCheckerGrant = async (req, res) => {
 
         const { grant, reactivated } = await createOrReactivateGrant({
             idLogin: IdLogin,
-            idPoint: IdPoint,
+            tipo,
+            idDormitorio: tipo === 'Dormitorio' ? req.user.dormitorio : null,
             scope: Scope,
             vigencia: Vigencia,
             fechaExpira: Vigencia === 'TEMPORAL' ? FechaExpira : null,
@@ -51,13 +64,21 @@ export const postCheckerGrant = async (req, res) => {
     }
 };
 
-// GET /checkerGrants/:idPoint  -> checkers activos del punto
-export const getCheckerGrantsByPoint = async (req, res) => {
+// GET /checkerGrants  -> checadores activos scopeados por el rol del que consulta:
+//   PRECEPTOR  -> los de su dormitorio; VIGILANCIA -> los de caseta.
+export const getCheckerGrantsScoped = async (req, res) => {
     try {
-        const grants = await findGrantsByPoint(req.params.idPoint);
+        const tipo = tipoPorRol(req.user.tipo);
+        if (!tipo) {
+            return res.status(403).json({ message: 'No tienes permisos', code: 'FORBIDDEN_ROLE' });
+        }
+        const grants = await findGrantsScoped({
+            tipo,
+            idDormitorio: tipo === 'Dormitorio' ? req.user.dormitorio : null
+        });
         return res.json(grants);
     } catch (error) {
-        console.error('Error al listar grants por punto:', error);
+        console.error('Error al listar grants:', error);
         return res.status(500).json({ message: 'Error al listar grants', code: 'SERVER_ERROR' });
     }
 };

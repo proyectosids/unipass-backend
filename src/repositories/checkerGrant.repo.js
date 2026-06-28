@@ -5,15 +5,18 @@ import { withConnection } from '../database/connection.js';
 const VIGENTE = `Activo = 1
                  AND (Vigencia = 'PERMANENTE' OR FechaExpira IS NULL OR FechaExpira > GETDATE())`;
 
-// Upsert idempotente por (IdLogin, IdPoint) -> respeta UQ_CheckerGrant_Login_Point.
-// Si ya existe, reactiva y actualiza Scope/Vigencia/FechaExpira/AsignadoPor.
-// Si no existe, inserta. Devuelve el grant resultante.
-export const createOrReactivateGrant = ({ idLogin, idPoint, scope, vigencia, fechaExpira = null, asignadoPor }) =>
+// Upsert idempotente por (IdLogin, Tipo, IdDormitorio) -> respeta
+// UQ_CheckerGrant_Tipo_Dorm. El alcance es por TIPO de punto (Dormitorio/Caseta);
+// IdPoint ya no se usa. Si existe, reactiva y actualiza Scope/Vigencia/FechaExpira.
+export const createOrReactivateGrant = ({ idLogin, tipo, idDormitorio = null, scope, vigencia, fechaExpira = null, asignadoPor }) =>
     withConnection(async (pool) => {
         const existing = await pool.request()
             .input('IdLogin', sql.Int, idLogin)
-            .input('IdPoint', sql.Int, idPoint)
-            .query('SELECT IdGrant FROM CheckerGrant WHERE IdLogin = @IdLogin AND IdPoint = @IdPoint');
+            .input('Tipo', sql.NVarChar(12), tipo)
+            .input('IdDormitorio', sql.Int, idDormitorio)
+            .query(`SELECT IdGrant FROM CheckerGrant
+                    WHERE IdLogin = @IdLogin AND Tipo = @Tipo
+                      AND ((IdDormitorio IS NULL AND @IdDormitorio IS NULL) OR IdDormitorio = @IdDormitorio)`);
 
         if (existing.recordset.length > 0) {
             const idGrant = existing.recordset[0].IdGrant;
@@ -24,11 +27,8 @@ export const createOrReactivateGrant = ({ idLogin, idPoint, scope, vigencia, fec
                 .input('FechaExpira', sql.DateTime, fechaExpira)
                 .input('AsignadoPor', sql.Int, asignadoPor)
                 .query(`UPDATE CheckerGrant
-                        SET Scope = @Scope,
-                            Vigencia = @Vigencia,
-                            FechaExpira = @FechaExpira,
-                            AsignadoPor = @AsignadoPor,
-                            Activo = 1
+                        SET Scope = @Scope, Vigencia = @Vigencia, FechaExpira = @FechaExpira,
+                            AsignadoPor = @AsignadoPor, Activo = 1
                         WHERE IdGrant = @IdGrant;
                         SELECT * FROM CheckerGrant WHERE IdGrant = @IdGrant;`);
             return { grant: updated.recordset[0], reactivated: true };
@@ -36,53 +36,63 @@ export const createOrReactivateGrant = ({ idLogin, idPoint, scope, vigencia, fec
 
         const inserted = await pool.request()
             .input('IdLogin', sql.Int, idLogin)
-            .input('IdPoint', sql.Int, idPoint)
+            .input('Tipo', sql.NVarChar(12), tipo)
+            .input('IdDormitorio', sql.Int, idDormitorio)
             .input('Scope', sql.NVarChar(10), scope)
             .input('Vigencia', sql.NVarChar(12), vigencia)
             .input('FechaExpira', sql.DateTime, fechaExpira)
             .input('AsignadoPor', sql.Int, asignadoPor)
-            .query(`INSERT INTO CheckerGrant (IdLogin, IdPoint, Scope, AsignadoPor, Vigencia, FechaExpira)
-                    VALUES (@IdLogin, @IdPoint, @Scope, @AsignadoPor, @Vigencia, @FechaExpira);
+            .query(`INSERT INTO CheckerGrant (IdLogin, Tipo, IdDormitorio, Scope, AsignadoPor, Vigencia, FechaExpira)
+                    VALUES (@IdLogin, @Tipo, @IdDormitorio, @Scope, @AsignadoPor, @Vigencia, @FechaExpira);
                     SELECT * FROM CheckerGrant WHERE IdGrant = SCOPE_IDENTITY();`);
         return { grant: inserted.recordset[0], reactivated: false };
     });
 
-// Grant vigente de un usuario sobre un punto. Usado por la autorizacion de /checks.
-export const findActiveGrant = (idLogin, idPoint) =>
+// Grant vigente de un usuario para un TIPO de punto. Para Dormitorio se matchea
+// IdDormitorio (el del alumno del check); para Caseta IdDormitorio es irrelevante.
+export const findActiveGrantByTipo = (idLogin, tipo, idDormitorio = null) =>
     withConnection(async (pool) => {
-        const result = await pool.request()
+        const req = pool.request()
             .input('IdLogin', sql.Int, idLogin)
-            .input('IdPoint', sql.Int, idPoint)
-            .query(`SELECT TOP 1 * FROM CheckerGrant
-                    WHERE IdLogin = @IdLogin AND IdPoint = @IdPoint AND ${VIGENTE}`);
+            .input('Tipo', sql.NVarChar(12), tipo)
+            .input('IdDormitorio', sql.Int, idDormitorio);
+        const dormFilter = tipo === 'Dormitorio' ? 'AND IdDormitorio = @IdDormitorio' : '';
+        const result = await req.query(`SELECT TOP 1 * FROM CheckerGrant
+                    WHERE IdLogin = @IdLogin AND Tipo = @Tipo ${dormFilter} AND ${VIGENTE}`);
         return result.recordset[0] || null;
     });
 
-// Capabilities vigentes del usuario para exponer en login / getCapabilities.
+// Capabilities vigentes del usuario para login / getCapabilities.
 export const findCapabilitiesByLogin = (idLogin) =>
     withConnection(async (pool) => {
         const result = await pool.request()
             .input('IdLogin', sql.Int, idLogin)
-            .query(`SELECT IdPoint, Scope FROM CheckerGrant
+            .query(`SELECT Tipo, IdDormitorio, Scope FROM CheckerGrant
                     WHERE IdLogin = @IdLogin AND ${VIGENTE}`);
         return result.recordset.map((r) => ({
             type: 'CHECKER',
-            idPoint: r.IdPoint,
+            pointType: r.Tipo,
+            ...(r.Tipo === 'Dormitorio' ? { idDormitorio: r.IdDormitorio } : {}),
             scope: r.Scope
         }));
     });
 
-// Checkers activos de un punto (pantalla de gestion).
-export const findGrantsByPoint = (idPoint) =>
+// Listado de grants scopeado por rol del que consulta (pantalla de gestion).
+// PRECEPTOR -> Dormitorio de su dorm; VIGILANCIA -> Caseta.
+export const findGrantsScoped = ({ tipo, idDormitorio = null }) =>
     withConnection(async (pool) => {
-        const result = await pool.request()
-            .input('IdPoint', sql.Int, idPoint)
-            .query(`SELECT CG.IdGrant, CG.IdLogin, CG.IdPoint, CG.Scope, CG.Vigencia,
-                           CG.FechaExpira, CG.Activo, CG.AsignadoPor, CG.FechaCreacion,
+        const req = pool.request().input('Tipo', sql.NVarChar(12), tipo);
+        let dormFilter = '';
+        if (tipo === 'Dormitorio') {
+            req.input('IdDormitorio', sql.Int, idDormitorio);
+            dormFilter = 'AND CG.IdDormitorio = @IdDormitorio';
+        }
+        const result = await req.query(`SELECT CG.IdGrant, CG.IdLogin, CG.Tipo, CG.IdDormitorio,
+                           CG.Scope, CG.Vigencia, CG.FechaExpira, CG.Activo, CG.AsignadoPor, CG.FechaCreacion,
                            L.Matricula, L.Nombre, L.Apellidos, L.TipoUser
                     FROM CheckerGrant CG
                     INNER JOIN LoginUniPass L ON L.IdLogin = CG.IdLogin
-                    WHERE CG.IdPoint = @IdPoint AND CG.Activo = 1
+                    WHERE CG.Tipo = @Tipo ${dormFilter} AND CG.Activo = 1
                     ORDER BY CG.FechaCreacion DESC`);
         return result.recordset;
     });
@@ -92,11 +102,11 @@ export const findGrantsByLogin = (idLogin) =>
     withConnection(async (pool) => {
         const result = await pool.request()
             .input('IdLogin', sql.Int, idLogin)
-            .query(`SELECT CG.*, P.NombrePunto
-                    FROM CheckerGrant CG
-                    LEFT JOIN Point P ON P.IdPoint = CG.IdPoint
-                    WHERE CG.IdLogin = @IdLogin
-                    ORDER BY CG.FechaCreacion DESC`);
+            .query(`SELECT IdGrant, IdLogin, Tipo, IdDormitorio, Scope, Vigencia,
+                           FechaExpira, Activo, AsignadoPor, FechaCreacion
+                    FROM CheckerGrant
+                    WHERE IdLogin = @IdLogin
+                    ORDER BY FechaCreacion DESC`);
         return result.recordset;
     });
 

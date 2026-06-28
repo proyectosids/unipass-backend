@@ -1,6 +1,15 @@
 import sql from 'mssql';
 import { withConnection } from '../database/connection.js';
 
+// Orden estricto de los 4 checks por salida, derivado de (Accion, NombrePunto):
+//   1 Salida Dormitorio, 2 Salida Caseta, 3 Regreso Caseta, 4 Regreso Dormitorio.
+const PASO_CASE = `CASE
+        WHEN CheckPoints.Accion = 'SALIDA'  AND Point.NombrePunto = 'Dormitorio' THEN 1
+        WHEN CheckPoints.Accion = 'SALIDA'  AND Point.NombrePunto = 'Caseta'     THEN 2
+        WHEN CheckPoints.Accion = 'RETORNO' AND Point.NombrePunto = 'Caseta'     THEN 3
+        WHEN CheckPoints.Accion = 'RETORNO' AND Point.NombrePunto = 'Dormitorio' THEN 4
+    END AS Paso`;
+
 export const createCheckPoint = ({ statusCheck = 'Pendiente', accion, idPoint, idPermission }) =>
     withConnection(async (pool) => {
         const result = await pool
@@ -20,7 +29,7 @@ export const findPendingChecksDormitorioSalida = (dormitorio) =>
         const result = await pool
             .request()
             .input('Dormitorio', sql.Int, dormitorio)
-            .query(`SELECT Permission.*, TypeExit.*, LoginUniPass.*, CheckPoints.*, Point.*
+            .query(`SELECT Permission.*, TypeExit.*, LoginUniPass.*, CheckPoints.*, Point.*, ${PASO_CASE}
                     FROM Permission
                     JOIN TypeExit ON Permission.IdTipoSalida = TypeExit.IdTypeExit
                     JOIN LoginUniPass ON Permission.IdUser = LoginUniPass.IdLogin
@@ -77,7 +86,7 @@ export const findPendingChecksVigilanciaSalida = () =>
     withConnection(async (pool) => {
         const result = await pool
             .request()
-            .query(`SELECT Permission.*, TypeExit.*, LoginUniPass.*, CheckPoints.*, Point.*
+            .query(`SELECT Permission.*, TypeExit.*, LoginUniPass.*, CheckPoints.*, Point.*, ${PASO_CASE}
                     FROM Permission
                     JOIN TypeExit ON Permission.IdTipoSalida = TypeExit.IdTypeExit
                     JOIN LoginUniPass ON Permission.IdUser = LoginUniPass.IdLogin
@@ -105,7 +114,7 @@ export const findPendingChecksVigilanciaRegreso = () =>
     withConnection(async (pool) => {
         const result = await pool
             .request()
-            .query(`SELECT Permission.*, TypeExit.*, LoginUniPass.*, CheckPoints.*, Point.*
+            .query(`SELECT Permission.*, TypeExit.*, LoginUniPass.*, CheckPoints.*, Point.*, ${PASO_CASE}
                     FROM Permission
                     JOIN TypeExit ON Permission.IdTipoSalida = TypeExit.IdTypeExit
                     JOIN LoginUniPass ON Permission.IdUser = LoginUniPass.IdLogin
@@ -127,15 +136,34 @@ export const findPendingChecksVigilanciaRegreso = () =>
         return result.recordset;
     });
 
-// Datos minimos del check para autorizar la confirmacion (grant + scope).
+// Datos del check para autorizar la confirmacion: tipo de punto (NombrePunto) y
+// dormitorio del alumno (para el scope de checador de Dormitorio).
 export const findCheckAuthInfo = (idCheck) =>
     withConnection(async (pool) => {
         const result = await pool
             .request()
             .input('IdCheck', sql.Int, idCheck)
-            .query(`SELECT IdCheck, IdPoint, Accion, Estatus, IdPermission
-                    FROM CheckPoints WHERE IdCheck = @IdCheck`);
+            .query(`SELECT cp.IdCheck, cp.IdPoint, cp.Accion, cp.Estatus, cp.IdPermission,
+                           p.NombrePunto, lu.Dormitorio AS AlumnoDormitorio
+                    FROM CheckPoints cp
+                    JOIN Point p ON p.IdPoint = cp.IdPoint
+                    JOIN Permission pr ON pr.IdPermission = cp.IdPermission
+                    JOIN LoginUniPass lu ON lu.IdLogin = pr.IdUser
+                    WHERE cp.IdCheck = @IdCheck`);
         return result.recordset[0] || null;
+    });
+
+// Pasos (1..4) y estatus de todos los checks de una salida, para validar el orden.
+export const findPermissionSteps = (idPermission) =>
+    withConnection(async (pool) => {
+        const result = await pool
+            .request()
+            .input('IdPermission', sql.Int, idPermission)
+            .query(`SELECT CheckPoints.IdCheck, CheckPoints.Estatus, ${PASO_CASE}
+                    FROM CheckPoints
+                    JOIN Point ON CheckPoints.IdPoint = Point.IdPoint
+                    WHERE CheckPoints.IdPermission = @IdPermission`);
+        return result.recordset;
     });
 
 export const updateCheckPoint = (idCheck, { fechaCheck, estatus, observaciones, confirmadoPor = null }) =>
