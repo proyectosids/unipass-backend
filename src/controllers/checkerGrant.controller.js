@@ -6,9 +6,22 @@ import {
     setGrantActivo,
     deleteGrant
 } from '../repositories/checkerGrant.repo.js';
+import { searchAssignablePersonsByName } from '../repositories/user.repo.js';
 
 const SCOPES = new Set(['SALIDA', 'RETORNO', 'AMBOS']);
 const VIGENCIAS = new Set(['TEMPORAL', 'PERMANENTE']);
+
+// GET /buscarPersona/:Nombre -> personas asignables como checador (LIKE, solo activos,
+// campos seguros). Devuelve lista (vacia si no hay match).
+export const buscarPersonaAsignable = async (req, res) => {
+    try {
+        const personas = await searchAssignablePersonsByName(req.params.Nombre);
+        return res.json(personas);
+    } catch (error) {
+        console.error('Error al buscar persona:', error);
+        return res.status(500).json({ message: 'Error al buscar persona', code: 'SERVER_ERROR' });
+    }
+};
 
 // Tipo de checador segun el rol que asigna/consulta.
 const tipoPorRol = (tipoUser) =>

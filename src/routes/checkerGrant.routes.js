@@ -7,9 +7,9 @@ import {
     getCheckerGrantsByUser,
     putCheckerGrant,
     deleteCheckerGrant,
-    getCapabilities
+    getCapabilities,
+    buscarPersonaAsignable
 } from '../controllers/checkerGrant.controller.js';
-import { buscarPersona } from '../controllers/user.controllers.js';
 
 const router = Router();
 
@@ -23,8 +23,8 @@ router.get('/checkerGrantsByUser/:idLogin', verifyToken, canGrant, getCheckerGra
 router.put('/checkerGrant/:idGrant', verifyToken, canGrant, putCheckerGrant);
 router.delete('/checkerGrant/:idGrant', verifyToken, canGrant, deleteCheckerGrant);
 
-// Busqueda de persona para asignar grant (alias de /buscarUser, incluye alumnos)
-router.get('/buscarPersona/:Nombre', verifyToken, canGrant, buscarPersona);
+// Busqueda de persona para asignar grant: LIKE parcial, solo activos, campos seguros.
+router.get('/buscarPersona/:Nombre', verifyToken, canGrant, buscarPersonaAsignable);
 
 // Capabilities del usuario autenticado (cualquier rol)
 router.get('/getCapabilities', verifyToken, getCapabilities);

@@ -55,6 +55,27 @@ export const findPersonaByNombreOApellidos = (nombre) =>
         return result.recordset;
     });
 
+// Busqueda de personas asignables como checador (pantalla de gestion).
+// LIKE parcial sobre nombre/apellidos; solo activos; sin DEPARTAMENTO (retirado).
+// SELECT explicito de campos seguros: NO expone Contraseña, TokenCFM ni Correo.
+export const searchAssignablePersonsByName = (q) =>
+    withConnection(async (pool) => {
+        const result = await pool
+            .request()
+            .input('q', sql.VarChar, q)
+            .query(`SELECT IdLogin, Matricula, Nombre, Apellidos, TipoUser
+                    FROM LoginUniPass
+                    WHERE StatusActividad = 1
+                      AND TipoUser <> 'DEPARTAMENTO'
+                      AND (
+                          Nombre LIKE '%' + @q + '%'
+                          OR Apellidos LIKE '%' + @q + '%'
+                          OR (Nombre + ' ' + Apellidos) LIKE '%' + @q + '%'
+                      )
+                    ORDER BY Nombre, Apellidos`);
+        return result.recordset;
+    });
+
 export const findTokenFCMByMatricula = (matricula) =>
     withConnection(async (pool) => {
         const result = await pool
