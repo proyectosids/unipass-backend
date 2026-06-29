@@ -68,9 +68,9 @@ export const searchAssignablePersonsByName = (q) =>
                     WHERE StatusActividad = 1
                       AND TipoUser <> 'DEPARTAMENTO'
                       AND (
-                          Nombre LIKE '%' + @q + '%'
-                          OR Apellidos LIKE '%' + @q + '%'
-                          OR (Nombre + ' ' + Apellidos) LIKE '%' + @q + '%'
+                          Nombre COLLATE Latin1_General_CI_AI LIKE '%' + @q + '%'
+                          OR Apellidos COLLATE Latin1_General_CI_AI LIKE '%' + @q + '%'
+                          OR (Nombre + ' ' + Apellidos) COLLATE Latin1_General_CI_AI LIKE '%' + @q + '%'
                       )
                     ORDER BY Nombre, Apellidos`);
         return result.recordset;
