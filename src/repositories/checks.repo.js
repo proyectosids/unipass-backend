@@ -10,6 +10,22 @@ const PASO_CASE = `CASE
         WHEN CheckPoints.Accion = 'RETORNO' AND Point.NombrePunto = 'Dormitorio' THEN 4
     END AS Paso`;
 
+// Campos seguros para los listados de checks (pantalla Checador). Lista EXPLICITA:
+// NO expone Contraseña/Correo/TokenCFM ni otros datos sensibles de LoginUniPass.
+const CHECK_FIELDS = `CheckPoints.IdCheck,
+        Permission.IdPermission,
+        CheckPoints.Accion,
+        CheckPoints.Estatus,
+        Point.NombrePunto,
+        Permission.FechaSalida,
+        Permission.FechaRegreso,
+        TypeExit.Descripcion,
+        Permission.IdUser,
+        LoginUniPass.Matricula,
+        LoginUniPass.Nombre,
+        LoginUniPass.Apellidos,
+        ${PASO_CASE}`;
+
 export const createCheckPoint = ({ statusCheck = 'Pendiente', accion, idPoint, idPermission }) =>
     withConnection(async (pool) => {
         const result = await pool
@@ -29,7 +45,7 @@ export const findPendingChecksDormitorioSalida = (dormitorio) =>
         const result = await pool
             .request()
             .input('Dormitorio', sql.Int, dormitorio)
-            .query(`SELECT Permission.*, TypeExit.*, LoginUniPass.*, CheckPoints.*, Point.*, ${PASO_CASE}
+            .query(`SELECT ${CHECK_FIELDS}
                     FROM Permission
                     JOIN TypeExit ON Permission.IdTipoSalida = TypeExit.IdTypeExit
                     JOIN LoginUniPass ON Permission.IdUser = LoginUniPass.IdLogin
@@ -54,7 +70,7 @@ export const findPendingChecksDormitorioRetorno = (dormitorio) =>
                                ROW_NUMBER() OVER (PARTITION BY IdPermission ORDER BY FechaCheck) AS CheckNumber
                         FROM CheckPoints
                     )
-                    SELECT Permission.*, TypeExit.*, LoginUniPass.*, CheckPoints.*, Point.*
+                    SELECT ${CHECK_FIELDS}
                     FROM Permission
                     JOIN TypeExit ON Permission.IdTipoSalida = TypeExit.IdTypeExit
                     JOIN LoginUniPass ON Permission.IdUser = LoginUniPass.IdLogin
@@ -86,7 +102,7 @@ export const findPendingChecksVigilanciaSalida = () =>
     withConnection(async (pool) => {
         const result = await pool
             .request()
-            .query(`SELECT Permission.*, TypeExit.*, LoginUniPass.*, CheckPoints.*, Point.*, ${PASO_CASE}
+            .query(`SELECT ${CHECK_FIELDS}
                     FROM Permission
                     JOIN TypeExit ON Permission.IdTipoSalida = TypeExit.IdTypeExit
                     JOIN LoginUniPass ON Permission.IdUser = LoginUniPass.IdLogin
@@ -114,7 +130,7 @@ export const findPendingChecksVigilanciaRegreso = () =>
     withConnection(async (pool) => {
         const result = await pool
             .request()
-            .query(`SELECT Permission.*, TypeExit.*, LoginUniPass.*, CheckPoints.*, Point.*, ${PASO_CASE}
+            .query(`SELECT ${CHECK_FIELDS}
                     FROM Permission
                     JOIN TypeExit ON Permission.IdTipoSalida = TypeExit.IdTypeExit
                     JOIN LoginUniPass ON Permission.IdUser = LoginUniPass.IdLogin
