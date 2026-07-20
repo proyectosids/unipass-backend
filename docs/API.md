@@ -60,7 +60,9 @@ Cada consulta abre y cierra su propio pool mediante `withConnection` (`src/datab
 - **`RefreshToken`** — sesiones (hash SHA-256 del refresh, `ExpiresAt`, `RevokedAt`, rotación con detección de reuso).
 - **`Bedroom`**, **`TypeExit`**, **`Position`** (cargos delegados/suplencias), **`Doctos`** (expediente documental).
 - **`Configuracion`** — clave/valor operable con UPDATE (sin redeploy). Claves: `AUTORIZADOR_SALIDAS`
-  (`PRECEPTOR`|`COORDINADOR`), `COORDINADOR_IDEMPLEADO`, `COORDINADOR_NODEPTO` (migración `005`).
+  (`PRECEPTOR`|`COORDINADOR`), y el override **opcional** del coordinador `COORDINADOR_IDEMPLEADO`
+  / `COORDINADOR_NODEPTO` (migración `005`; vaciados en `006` → por defecto el coordinador se
+  resuelve por rol, ver §6).
 
 ### Orden estricto de los 4 checks (`Paso`)
 
@@ -254,7 +256,7 @@ le tocan ambos roles, el segundo `POST /authorize` **no duplica**: marca `DualRo
 | `GET /validarAuthorize/:Id?IdPermiso=` | ¿El empleado `:Id` tiene autorización sobre ese permiso? 404 si no. |
 | `GET /progresAuthorize/:Id` | Avance de la cadena del permiso `:Id`. Cada fila incluye `DualRole` (bool) y `Roles: ['Jefe de trabajo','Preceptor']` cuando aplica. |
 | `GET /asignarPrece/:Nivel?Sexo=` | Dormitorio/preceptor que corresponde por nivel académico y sexo (consulta `Bedroom`). |
-| `GET /autorizadorSalida?tipo=2\|3&nivelAcademico=&sexo=` | Resuelve quién autoriza salidas ESPECIAL(2)/A CASA(3) según el switch `AUTORIZADOR_SALIDAS` en `Configuracion`: `{ IdEmpleado, NoDepto, modo }`. Modo `COORDINADOR` = valores fijos de config; modo `PRECEPTOR` = misma resolución que hace hoy la app (Bedroom → preceptor del dormitorio). Sin fallback silencioso: 400 coordinador no configurado / 404 preceptor no resuelto. |
+| `GET /autorizadorSalida?tipo=2\|3&nivelAcademico=&sexo=` | Resuelve quién autoriza salidas ESPECIAL(2)/A CASA(3) según el switch `AUTORIZADOR_SALIDAS` en `Configuracion`: `{ IdEmpleado, NoDepto, modo }`. Modo `COORDINADOR` = **híbrido**: usa el override de config si está, si no resuelve al ADMINISTRATIVO activo de Coordinación (auto-hereda el cambio de coordinador); modo `PRECEPTOR` = misma resolución que hace hoy la app (Bedroom → preceptor del dormitorio). Sin fallback silencioso: 400 coordinador no resoluble / 404 preceptor no resuelto. |
 
 ## 9. Dormitorios y puntos — Auth: —
 

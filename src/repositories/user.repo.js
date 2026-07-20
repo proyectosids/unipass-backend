@@ -90,6 +90,22 @@ export const findPreceptorMatriculaByDormitorio = (dormitorio) =>
         return result.recordset[0]?.Matricula ?? null;
     });
 
+// Coordinador de dormitorios activo (ADMINISTRATIVO). Su Matricula = IdEmpleado en
+// Authorize; el NoDepto sale de su dormitorio (LoginUniPass.Dormitorio ->
+// Bedroom.IdBedroom -> Identificador). Permite resolver al coordinador sin fijar su
+// id en Configuracion: cuando cambie el ADMINISTRATIVO activo, se hereda solo.
+export const findCoordinadorActivo = () =>
+    withConnection(async (pool) => {
+        const result = await pool.request()
+            .query(`SELECT TOP 1 L.Matricula AS IdEmpleado, B.Identificador AS NoDepto
+                    FROM LoginUniPass L
+                    LEFT JOIN Bedroom B ON B.IdBedroom = L.Dormitorio
+                    WHERE L.TipoUser = 'ADMINISTRATIVO'
+                      AND L.StatusActividad = 1
+                    ORDER BY L.IdLogin`);
+        return result.recordset[0] || null;
+    });
+
 export const findTokenFCMByMatricula = (matricula) =>
     withConnection(async (pool) => {
         const result = await pool

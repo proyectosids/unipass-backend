@@ -240,7 +240,7 @@ Resuelve **quién autoriza** las salidas ESPECIAL (2) y A CASA (3) según el swi
 UPDATE en BD, sin redesplegar. `nivelAcademico`/`sexo` solo se usan en modo PRECEPTOR.
 
 ```json
-// 200 — modo COORDINADOR (IdEmpleado/NoDepto fijos desde Configuracion)
+// 200 — modo COORDINADOR (hibrido)
 { "IdEmpleado": 264, "NoDepto": 351, "modo": "COORDINADOR" }
 
 // 200 — modo PRECEPTOR (misma resolucion que la app hace hoy:
@@ -248,10 +248,16 @@ UPDATE en BD, sin redesplegar. `nivelAcademico`/`sexo` solo se usan en modo PREC
 { "IdEmpleado": 41, "NoDepto": 318, "modo": "PRECEPTOR" }
 ```
 
+**Modo COORDINADOR (híbrido):** primero mira el override en `Configuracion`
+(`COORDINADOR_IDEMPLEADO`/`COORDINADOR_NODEPTO`) — si ambos traen valor válido, mandan.
+Si están vacíos (default tras migración `006`), resuelve al **ADMINISTRATIVO activo de
+Coordinación** (`LoginUniPass.Dormitorio → Bedroom.Identificador`), de modo que al cambiar
+de coordinador el resultado se hereda solo, sin tocar config ni código.
+
 | Error | HTTP | Body |
 |---|---|---|
 | Tipo inválido | 400 | `{ "message": "tipo debe ser 2 o 3" }` |
-| Coordinador sin configurar (modo COORDINADOR) | 400 | `{ "message": "Coordinador de dormitorios no configurado" }` |
+| Coordinador ni configurado ni resoluble (modo COORDINADOR) | 400 | `{ "message": "Coordinador de dormitorios no configurado ni resoluble" }` |
 | Faltan params (modo PRECEPTOR) | 400 | `{ "message": "nivelAcademico y sexo son obligatorios en modo PRECEPTOR" }` |
 | Sin dormitorio para nivel/sexo | 404 | `{ "message": "Preceptor no resuelto para ese nivel/sexo" }` |
 | Dormitorio sin preceptor activo | 404 | `{ "message": "Jefe de preceptor no resuelto para ese dormitorio" }` |

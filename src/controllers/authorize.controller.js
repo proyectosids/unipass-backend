@@ -12,16 +12,26 @@ import {
 import { findBedroomBySexoYNivel } from '../repositories/bedroom.repo.js';
 import { findAlumnoMatriculaByPermission } from '../repositories/permission.repo.js';
 import { findConfigValue } from '../repositories/config.repo.js';
-import { findPreceptorMatriculaByDormitorio } from '../repositories/user.repo.js';
+import { findPreceptorMatriculaByDormitorio, findCoordinadorActivo } from '../repositories/user.repo.js';
 import { emitToUser, emitToEmpleado } from '../util/socketHelpers.js';
 
 // Salidas cuyo autorizador se resuelve por el switch: 2=ESPECIAL, 3=A CASA.
 const TIPOS_SALIDA_SWITCH = new Set(['2', '3']);
 
+// Entero valido (> 0) o null. Number('')/(null) -> 0 y Number(undefined) -> NaN,
+// ambos descartados: asi un valor vacio en Configuracion equivale a "sin override".
+const enteroPositivoONull = (valor) => {
+    const n = Number(valor);
+    return Number.isInteger(n) && n > 0 ? n : null;
+};
+
 // GET /autorizadorSalida?tipo=2|3&nivelAcademico=...&sexo=...
 // Resuelve QUIEN autoriza la salida segun el switch AUTORIZADOR_SALIDAS de
 // dbo.Configuracion (migracion 005), sin fallback silencioso:
-//   COORDINADOR -> IdEmpleado/NoDepto fijos desde Configuracion.
+//   COORDINADOR -> HIBRIDO: si Configuracion trae COORDINADOR_IDEMPLEADO/NODEPTO
+//                  (override explicito) manda; si estan vacios, se resuelve por rol
+//                  (ADMINISTRATIVO activo de Coordinacion) para auto-heredar el
+//                  cambio de coordinador sin tocar config ni codigo.
 //   PRECEPTOR   -> misma resolucion que hace hoy la app: Bedroom por sexo+nivel
 //                  (= /asignarPrece, Identificador = NoDepto) y preceptor del
 //                  dormitorio (= "ID JEFE" de la API institucional /api/datos/prece).
@@ -35,10 +45,19 @@ export const getAutorizadorSalida = async (req, res) => {
         const modo = ((await findConfigValue('AUTORIZADOR_SALIDAS')) || 'PRECEPTOR').toUpperCase();
 
         if (modo === 'COORDINADOR') {
-            const idEmpleado = Number(await findConfigValue('COORDINADOR_IDEMPLEADO'));
-            const noDepto = Number(await findConfigValue('COORDINADOR_NODEPTO'));
-            if (!Number.isInteger(idEmpleado) || idEmpleado <= 0 || !Number.isInteger(noDepto) || noDepto <= 0) {
-                return res.status(400).json({ message: 'Coordinador de dormitorios no configurado' });
+            // 1) Override explicito en Configuracion (si ambos son validos, mandan).
+            let idEmpleado = enteroPositivoONull(await findConfigValue('COORDINADOR_IDEMPLEADO'));
+            let noDepto = enteroPositivoONull(await findConfigValue('COORDINADOR_NODEPTO'));
+
+            // 2) Sin override -> resolver por rol (auto-heal al cambiar de coordinador).
+            if (idEmpleado == null || noDepto == null) {
+                const coord = await findCoordinadorActivo();
+                idEmpleado = enteroPositivoONull(coord?.IdEmpleado);
+                noDepto = enteroPositivoONull(coord?.NoDepto);
+            }
+
+            if (idEmpleado == null || noDepto == null) {
+                return res.status(400).json({ message: 'Coordinador de dormitorios no configurado ni resoluble' });
             }
             return res.json({ IdEmpleado: idEmpleado, NoDepto: noDepto, modo: 'COORDINADOR' });
         }
