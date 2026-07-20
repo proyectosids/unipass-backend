@@ -1,3 +1,6 @@
+// Push FCM delegado a un microservicio externo (POST {PUSH_API_URL}/send). Si FCM
+// reporta token invalido/no registrado, se limpia TokenCFM del usuario en BD.
+// Sin PUSH_API_URL configurada, el envio se omite con warning (no truena).
 import { clearTokenFCMByMatricula } from '../repositories/user.repo.js';
 
 const PUSH_API_URL = process.env.PUSH_API_URL;

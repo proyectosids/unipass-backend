@@ -1,3 +1,6 @@
+// Tokens de sesion: access JWT (default 15m) con payload {id, matricula, nombre,
+// apellidos, tipo, dormitorio} -> req.user; refresh opaco de 32 bytes que solo se
+// persiste hasheado (SHA-256) en la tabla RefreshToken.
 import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
 import dotenv from 'dotenv';

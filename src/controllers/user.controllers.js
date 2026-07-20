@@ -1,3 +1,5 @@
+// Controlador de usuarios: sesion (login + refresh rotativo con deteccion de reuso,
+// logout, verify), password, busquedas, cargo delegado, token FCM y documentacion.
 import { hashData, VerifyHashData } from '../util/hashData.js';
 import {
     generateAccessToken,

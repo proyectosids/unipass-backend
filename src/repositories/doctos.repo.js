@@ -1,6 +1,9 @@
 import sql from 'mssql';
 import { withConnection } from '../database/connection.js';
 
+// Repositorio de Doctos + DocumentCatalog (expediente documental del alumno).
+// Regla de dormitorio: IdDormitorio = 5 significa vista global (dormitorios 1-4).
+
 export const findDocumentByLoginAndType = (idLogin, idDocumento) =>
     withConnection(async (pool) => {
         const result = await pool

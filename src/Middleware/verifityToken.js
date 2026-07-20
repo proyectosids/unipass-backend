@@ -1,3 +1,5 @@
+// Exige Authorization: Bearer <accessToken> y deja el payload del JWT en req.user.
+// 401 con code TOKEN_EXPIRED (el cliente debe refrescar) o TOKEN_INVALID.
 import jwt from 'jsonwebtoken';
 import dotenv from 'dotenv';
 dotenv.config();

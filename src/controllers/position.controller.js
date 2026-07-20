@@ -1,3 +1,6 @@
+// Controlador de Position (cargos delegados / suplencias entre empleados): mientras
+// el cargo esta Activo, el suplente recibe sockets y push del encargado. Mecanismo
+// independiente de CheckerGrant (no confundir con el checador).
 import {
     findPositionByMatricula,
     findPositionsByMatriculaEncargado,

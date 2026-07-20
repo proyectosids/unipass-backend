@@ -1,3 +1,6 @@
+// Controlador del expediente documental: subida/reemplazo (multer -> public/uploads),
+// consulta, aprobacion y rechazo (este ultimo notifica por socket y push FCM).
+// Si la BD falla despues de subir un archivo, se borra del disco (rollback).
 import {
     findDocumentByLoginAndType,
     findDocumentsByLogin,

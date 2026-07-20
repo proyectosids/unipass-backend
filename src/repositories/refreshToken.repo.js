@@ -1,6 +1,10 @@
 import sql from 'mssql';
 import { withConnection } from '../database/connection.js';
 
+// Repositorio de RefreshToken: los tokens se guardan como hash SHA-256, con rotacion
+// (ReplacedByTokenHash) y revocacion (RevokedAt). La deteccion de reuso y la logica
+// de sesion viven en user.controllers.js.
+
 export const createRefreshToken = ({ idLogin, tokenHash, expiresAt, deviceInfo }) =>
     withConnection(async (pool) => {
         await pool

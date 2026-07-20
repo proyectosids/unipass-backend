@@ -1,3 +1,6 @@
+// Controlador de la cadena de autorizacion (Authorize): alta de eslabones (con
+// DualRole cuando la misma persona es jefe y preceptor), resolucion por eslabon y
+// avance. Notifica por socket al alumno y al siguiente aprobador pendiente.
 import {
     createAuthorize as createAuthorizeRepo,
     updateAuthorizeStatus,

@@ -1,3 +1,6 @@
+// Controlador de permisos de salida: CRUD del permiso, bandejas de autorizacion,
+// tops, dashboards y filtros. Emite eventos de socket al alumno y a los empleados
+// de la cadena (ver docs/API.md seccion 12).
 import {
     findPermissionsByUserPaginated,
     findPermissionById,
@@ -62,6 +65,9 @@ export const createPermission = async (req, res) => {
             return res.status(400).json({ error: 'El IdUsuario no existe en dbo.Users' });
         }
 
+        // Ajuste de zona horaria hardcodeado (UTC-6): el cliente manda hora local sin
+        // offset y aqui se convierte a UTC. Deuda tecnica conocida (docs/API.md #14.3):
+        // no maneja DST ni otras zonas; cambiarlo requiere coordinarse con la app.
         const fechaSolicitada = new Date(req.body.FechaSolicitada);
         fechaSolicitada.setHours(fechaSolicitada.getHours() - 6);
         const fechaSalida = new Date(req.body.FechaSalida);

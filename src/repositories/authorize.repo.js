@@ -1,6 +1,9 @@
 import sql from 'mssql';
 import { withConnection } from '../database/connection.js';
 
+// Repositorio de Authorize: cadena de aprobacion de un permiso, en orden de
+// IdAuthorize (primer eslabon = jefe de trabajo, luego preceptor).
+
 // Idempotente: si ya existe Authorize para (IdPermission, IdEmpleado),
 // no inserta duplicado y marca el existente como DualRole.
 export const createAuthorize = ({ idEmpleado, noDepto, idPermission, statusAuthorize }) =>

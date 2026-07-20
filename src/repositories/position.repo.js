@@ -1,6 +1,9 @@
 import sql from 'mssql';
 import { withConnection } from '../database/connection.js';
 
+// Repositorio de Position (suplencias): el suplente se liga al cargo via
+// LoginUniPass.IdCargoDelegado -> Position.IdCargo; el encargado por MatriculaEncargado.
+
 export const findPositionByMatricula = (matricula) =>
     withConnection(async (pool) => {
         const result = await pool

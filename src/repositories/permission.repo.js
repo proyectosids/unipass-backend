@@ -1,6 +1,15 @@
 import sql from 'mssql';
 import { withConnection } from '../database/connection.js';
 
+// Repositorio de Permission (permisos de salida): historial del alumno, bandejas de
+// autorizacion (jefe de trabajo / preceptor), tops, dashboards y filtros.
+//
+// Regla de "bandeja del preceptor" (se repite en varias queries de este archivo):
+// un permiso le aparece al empleado cuando (a) es el UNICO aprobador de la cadena
+// (HAVING COUNT = 1) o (b) el PRIMER eslabon (jefe de trabajo) ya esta 'Aprobada'.
+// Regla de dashboard: Dormitorio = 5 en el perfil del consultante = vista global
+// (administracion); cualquier otro valor = solo su dormitorio.
+
 // === Lecturas ===
 
 export const findPermissionsByUserPaginated = (idUser, page, limit) =>
@@ -69,6 +78,8 @@ export const findAlumnoMatriculaByPermission = (idPermission) =>
         return result.recordset[0]?.Matricula || null;
     });
 
+// Bandeja del jefe de trabajo: todo permiso donde el empleado participa en la cadena
+// (Authorize), con FechaSalida en la ventana de -30 a +15 dias respecto a hoy.
 export const findPermissionsForAutorizacionByEmpleado = (idEmpleado) =>
     withConnection(async (pool) => {
         const result = await pool.request()
@@ -83,6 +94,8 @@ export const findPermissionsForAutorizacionByEmpleado = (idEmpleado) =>
         return result.recordset;
     });
 
+// Bandeja del preceptor: UNION de las reglas (a) unico aprobador y (b) primer eslabon
+// aprobado (ver cabecera del archivo). Misma ventana de -30/+15 dias.
 export const findPermissionsForAutorizacionPreceByEmpleado = (idEmpleado) =>
     withConnection(async (pool) => {
         const result = await pool.request()
@@ -142,6 +155,8 @@ export const findTop10PermissionsByEmployee = (idEmpleado) =>
         return result.recordset;
     });
 
+// Ultimos 10 de la bandeja del preceptor: mismas reglas (a)/(b) que
+// findPermissionsForAutorizacionPreceByEmpleado, pero sin ventana de fechas.
 export const findTop10PermissionsByPrece = (idEmpleado) =>
     withConnection(async (pool) => {
         const result = await pool.request()
@@ -178,6 +193,8 @@ export const findTop10PermissionsByPrece = (idEmpleado) =>
         return result.recordset;
     });
 
+// Conteos Aprobadas/Rechazadas/Pendientes/Total (PIVOT) para el dashboard de permisos.
+// Dorm 5 = ve todos los permisos; si no, solo su bandeja (reglas a/b de la cabecera).
 export const findDashboardPermissionCounts = (matriculaPreceptor) =>
     withConnection(async (pool) => {
         const result = await pool.request()
@@ -230,6 +247,8 @@ export const findDashboardPermissionCounts = (matriculaPreceptor) =>
         return result.recordset;
     });
 
+// Conteos de documentos de alumnos: ADMINISTRATIVO con Dorm 5 ve dormitorios 1-4;
+// un preceptor solo el suyo.
 export const findDashboardDocumentosCounts = (matriculaPreceptor) =>
     withConnection(async (pool) => {
         const result = await pool.request()
@@ -264,6 +283,8 @@ export const findUserTipoByMatricula = (matricula) =>
         return result.recordset[0]?.TipoUser || null;
     });
 
+// Filtro de permisos vista global (ADMINISTRATIVO). Cada filtro es opcional (NULL lo
+// ignora); fechaInicio/fechaFin matchean el DIA exacto de FechaSalida/FechaRegreso.
 export const filterPermisosAdministrativo = ({ fechaInicio, fechaFin, status, nombre, matricula, idEmpleado }) =>
     withConnection(async (pool) => {
         const result = await pool.request()
@@ -291,6 +312,8 @@ export const filterPermisosAdministrativo = ({ fechaInicio, fechaFin, status, no
         return result.recordset;
     });
 
+// Filtro de permisos del preceptor: mismos filtros opcionales, pero limitado a su
+// bandeja (reglas a/b de la cabecera del archivo).
 export const filterPermisosPreceptor = ({ fechaInicio, fechaFin, status, nombre, matricula, idEmpleado }) =>
     withConnection(async (pool) => {
         const result = await pool.request()
