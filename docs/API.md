@@ -230,7 +230,7 @@ Body: `{ FechaCheck, Estatus, Observaciones }` (`Estatus: 'Confirmada'` para con
 
 | Método y ruta | Descripción |
 |---|---|
-| `GET /permission/:Id?page=1&limit=10` | Permisos del alumno (`:Id` = IdUser), **paginado**: `{ data, pagination: { totalItems, totalPages, currentPage, limit } }`. |
+| `GET /permission/:Id?page=1&limit=10` | Permisos del alumno (`:Id` = IdUser), **paginado**: `{ data, pagination: { totalItems, totalPages, currentPage, limit } }`. Campos explícitos seguros. |
 | `POST /permission` | Crea permiso. Body `{ IdUser, FechaSolicitada, FechaSalida, FechaRegreso, StatusPermission, Motivo, IdTipoSalida, MedioSalida? }`. ⚠️ Resta **6 h** a las tres fechas (ajuste zona horaria hardcodeado) y guarda en UTC. 400 si `IdUser` no existe. Emite `new_permission_request`. |
 | `PUT /permission/:Id` | **Cancela** el permiso. Emite `permission_cancelled` a los empleados de su cadena. |
 | `DELETE /permission/:Id` | Elimina el permiso. |
@@ -242,7 +242,7 @@ Body: `{ FechaCheck, Estatus, Observaciones }` (`Estatus: 'Confirmada'` para con
 | `GET /permissionTop/Preceptor/:Id` | Últimos 10 por autorizar del preceptor. |
 | `GET /dashboardPermission/:IdPreceptor` | Conteos de permisos para dashboard del preceptor. |
 | `GET /dashboardDocumentos/:IdPreceptor` | Conteos de documentos para dashboard. |
-| `GET /permissions/filter/:IdPreceptor?fechaInicio&fechaFin&status&nombre&matricula` | Filtro de permisos. `:IdPreceptor` es la **matrícula numérica** del consultante; según su `TipoUser` filtra como `ADMINISTRATIVO` (global) o `PRECEPTOR` (su dormitorio). Otros roles → 403. Sin resultados → 404. |
+| `GET /permissions/filter/:IdPreceptor?fechaInicio&fechaFin&status&nombre&matricula` | Filtro de permisos. `:IdPreceptor` es la **matrícula numérica** del consultante; según su `TipoUser` filtra como `ADMINISTRATIVO` (global) o `PRECEPTOR` (su dormitorio). Otros roles → 403. Sin resultados → 404. Campos explícitos seguros. |
 
 ## 8. Cadena de autorización (`authorize.routes.js`) — Auth: —
 
