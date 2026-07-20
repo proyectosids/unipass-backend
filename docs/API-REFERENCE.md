@@ -233,6 +233,30 @@ y queda un eslabón `Pendiente`, emite `new_authorization_assigned` al siguiente
 - `GET /validarAuthorize/:Id?IdPermiso=6033` — registro `Authorize` de ese empleado para ese permiso; **404** si no participa.
 - `GET /asignarPrece/:Nivel?Sexo=F` — registro de `Bedroom` (dormitorio + preceptor) para ese nivel/sexo; **404** si no hay.
 
+### GET /autorizadorSalida?tipo=2|3&nivelAcademico=...&sexo=...
+
+Resuelve **quién autoriza** las salidas ESPECIAL (2) y A CASA (3) según el switch
+`AUTORIZADOR_SALIDAS` de `dbo.Configuracion` (migración `005`). Se alterna con un
+UPDATE en BD, sin redesplegar. `nivelAcademico`/`sexo` solo se usan en modo PRECEPTOR.
+
+```json
+// 200 — modo COORDINADOR (IdEmpleado/NoDepto fijos desde Configuracion)
+{ "IdEmpleado": 264, "NoDepto": 351, "modo": "COORDINADOR" }
+
+// 200 — modo PRECEPTOR (misma resolucion que la app hace hoy:
+// Bedroom por sexo+nivel -> Identificador=NoDepto; preceptor del dormitorio -> IdEmpleado)
+{ "IdEmpleado": 41, "NoDepto": 318, "modo": "PRECEPTOR" }
+```
+
+| Error | HTTP | Body |
+|---|---|---|
+| Tipo inválido | 400 | `{ "message": "tipo debe ser 2 o 3" }` |
+| Coordinador sin configurar (modo COORDINADOR) | 400 | `{ "message": "Coordinador de dormitorios no configurado" }` |
+| Faltan params (modo PRECEPTOR) | 400 | `{ "message": "nivelAcademico y sexo son obligatorios en modo PRECEPTOR" }` |
+| Sin dormitorio para nivel/sexo | 404 | `{ "message": "Preceptor no resuelto para ese nivel/sexo" }` |
+| Dormitorio sin preceptor activo | 404 | `{ "message": "Jefe de preceptor no resuelto para ese dormitorio" }` |
+| Error interno (p. ej. migración 005 sin aplicar) | 500 | `{ "message": "Error resolviendo autorizador" }` |
+
 ---
 
 ## 5. Checador (grants + checks)

@@ -76,6 +76,20 @@ export const searchAssignablePersonsByName = (q) =>
         return result.recordset;
     });
 
+// Preceptor activo de un dormitorio (Bedroom.IdBedroom = LoginUniPass.Dormitorio).
+// Su Matricula numerica es el IdEmpleado que usa Authorize: equivale al "ID JEFE"
+// que la app resuelve hoy con la API institucional (/api/datos/prece por NoDepto).
+export const findPreceptorMatriculaByDormitorio = (dormitorio) =>
+    withConnection(async (pool) => {
+        const result = await pool.request()
+            .input('Dormitorio', sql.Int, dormitorio)
+            .query(`SELECT TOP 1 Matricula FROM LoginUniPass
+                    WHERE TipoUser = 'PRECEPTOR'
+                      AND Dormitorio = @Dormitorio
+                      AND StatusActividad = 1`);
+        return result.recordset[0]?.Matricula ?? null;
+    });
+
 export const findTokenFCMByMatricula = (matricula) =>
     withConnection(async (pool) => {
         const result = await pool

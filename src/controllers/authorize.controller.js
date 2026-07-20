@@ -11,7 +11,60 @@ import {
 } from '../repositories/authorize.repo.js';
 import { findBedroomBySexoYNivel } from '../repositories/bedroom.repo.js';
 import { findAlumnoMatriculaByPermission } from '../repositories/permission.repo.js';
+import { findConfigValue } from '../repositories/config.repo.js';
+import { findPreceptorMatriculaByDormitorio } from '../repositories/user.repo.js';
 import { emitToUser, emitToEmpleado } from '../util/socketHelpers.js';
+
+// Salidas cuyo autorizador se resuelve por el switch: 2=ESPECIAL, 3=A CASA.
+const TIPOS_SALIDA_SWITCH = new Set(['2', '3']);
+
+// GET /autorizadorSalida?tipo=2|3&nivelAcademico=...&sexo=...
+// Resuelve QUIEN autoriza la salida segun el switch AUTORIZADOR_SALIDAS de
+// dbo.Configuracion (migracion 005), sin fallback silencioso:
+//   COORDINADOR -> IdEmpleado/NoDepto fijos desde Configuracion.
+//   PRECEPTOR   -> misma resolucion que hace hoy la app: Bedroom por sexo+nivel
+//                  (= /asignarPrece, Identificador = NoDepto) y preceptor del
+//                  dormitorio (= "ID JEFE" de la API institucional /api/datos/prece).
+export const getAutorizadorSalida = async (req, res) => {
+    try {
+        const { tipo, nivelAcademico, sexo } = req.query;
+        if (!TIPOS_SALIDA_SWITCH.has(String(tipo))) {
+            return res.status(400).json({ message: 'tipo debe ser 2 o 3' });
+        }
+
+        const modo = ((await findConfigValue('AUTORIZADOR_SALIDAS')) || 'PRECEPTOR').toUpperCase();
+
+        if (modo === 'COORDINADOR') {
+            const idEmpleado = Number(await findConfigValue('COORDINADOR_IDEMPLEADO'));
+            const noDepto = Number(await findConfigValue('COORDINADOR_NODEPTO'));
+            if (!Number.isInteger(idEmpleado) || idEmpleado <= 0 || !Number.isInteger(noDepto) || noDepto <= 0) {
+                return res.status(400).json({ message: 'Coordinador de dormitorios no configurado' });
+            }
+            return res.json({ IdEmpleado: idEmpleado, NoDepto: noDepto, modo: 'COORDINADOR' });
+        }
+
+        // Modo PRECEPTOR (default): replica el calculo actual de la app.
+        if (!nivelAcademico || !sexo) {
+            return res.status(400).json({ message: 'nivelAcademico y sexo son obligatorios en modo PRECEPTOR' });
+        }
+        const bedroom = await findBedroomBySexoYNivel(sexo, nivelAcademico);
+        if (!bedroom || !bedroom.Identificador) {
+            return res.status(404).json({ message: 'Preceptor no resuelto para ese nivel/sexo' });
+        }
+        const matriculaPreceptor = await findPreceptorMatriculaByDormitorio(bedroom.IdBedroom);
+        if (matriculaPreceptor == null) {
+            return res.status(404).json({ message: 'Jefe de preceptor no resuelto para ese dormitorio' });
+        }
+        return res.json({
+            IdEmpleado: Number(matriculaPreceptor),
+            NoDepto: Number(bedroom.Identificador),
+            modo: 'PRECEPTOR'
+        });
+    } catch (error) {
+        console.error('Error resolviendo autorizador:', error);
+        return res.status(500).json({ message: 'Error resolviendo autorizador' });
+    }
+};
 
 export const createAuthorize = async (req, res) => {
     try {

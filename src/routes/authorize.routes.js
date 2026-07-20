@@ -1,7 +1,11 @@
 import { Router } from "express";
-import { AdvancePermission, asignarPreceptor, createAuthorize, definirAutorizacion, verificarValidacion } from "../controllers/authorize.controller.js";
+import { AdvancePermission, asignarPreceptor, createAuthorize, definirAutorizacion, verificarValidacion, getAutorizadorSalida } from "../controllers/authorize.controller.js";
 
 const router = Router();
+
+// Resuelve quien autoriza salidas ESPECIAL(2)/A CASA(3) segun el switch
+// AUTORIZADOR_SALIDAS en dbo.Configuracion (COORDINADOR o PRECEPTOR)
+router.get("/autorizadorSalida", getAutorizadorSalida);
 
 // Alta de un eslabon de la cadena (idempotente: repetido -> DualRole)
 router.post("/authorize", createAuthorize);
