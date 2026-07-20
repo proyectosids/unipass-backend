@@ -355,6 +355,50 @@ Al confirmar registra `ConfirmadoPor = IdLogin` del checador y emite `check_upda
 
 ---
 
+### GET /admin/dashboard?desde=YYYY-MM-DD&hasta=YYYY-MM-DD
+
+Panel del Coordinador de dormitorios: conteos agregados calculados en SQL (COUNT/GROUP BY).
+Periodo default: **semana actual** (lunes 00:00 → hoy, por `FechaSolicitada`); `desde`/`hasta`
+van juntos y `hasta` es inclusivo. El coordinador se resuelve con el mismo híbrido de
+`/autorizadorSalida` (override en `Configuracion` o ADMINISTRATIVO activo de Coordinación).
+
+```json
+// 200
+{
+  "pendientes": {
+    "total": 3,
+    "porDormitorio": [ { "idDormitorio": 4, "nombre": "H.V.N.U", "total": 3 } ]
+  },
+  "alumnosFuera": [ { "idDormitorio": 4, "nombre": "H.V.N.U", "total": 1 } ],
+  "actividadReciente": [
+    { "idPermiso": 7039, "alumno": "IRVING YAEL PATRICIO GONZALEZ", "tipo": 3,
+      "status": "Aprobada", "fecha": "2026-07-20T01:24:38.883Z" }
+  ],
+  "totalesPorDormitorio": [
+    { "idDormitorio": 4, "nombre": "H.V.N.U", "solicitudes": 2, "aprobadas": 2, "rechazadas": 0 }
+  ]
+}
+```
+
+Semántica de cada bloque:
+- `pendientes` — permisos tipos **2/3** con `StatusPermission='Pendiente'` **asignados al
+  coordinador** (via `Authorize`), misma ventana −30/+15 días que su bandeja
+  (`/permissionsEmployee`). Coincide con lo que ve en la app.
+- `alumnosFuera` — alumnos (distintos) con salida de **Caseta confirmada** y sin retorno de
+  Caseta confirmado. Estado físico actual: **no** filtra por periodo ni por tipo de salida.
+- `actividadReciente` — últimos 10 permisos `Aprobada`/`Rechazada` (tipos 2/3) del periodo;
+  `fecha` = `FechaAprobacion` del último eslabón o `FechaSolicitada` si no hay.
+- `totalesPorDormitorio` — solicitudes tipos 2/3 del periodo y cuántas terminaron
+  aprobadas/rechazadas. Listas vacías `[]` cuando no hay datos (nunca 404).
+
+| Error | HTTP | Body |
+|---|---|---|
+| Rango inválido (falta uno, formato ≠ YYYY-MM-DD, o desde > hasta) | 400 | `{ "message": "Rango invalido: desde y hasta van juntos en formato YYYY-MM-DD, con desde <= hasta" }` |
+| Coordinador ni configurado ni resoluble | 400 | `{ "message": "Coordinador de dormitorios no configurado ni resoluble" }` |
+| Error interno | 500 | `{ "message": "Error generando dashboard" }` |
+
+---
+
 ## 6. Dormitorios, puntos, cargos
 
 ### GET /dormitorio/:Sexo/:NivelAcademico

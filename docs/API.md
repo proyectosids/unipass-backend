@@ -258,6 +258,17 @@ le tocan ambos roles, el segundo `POST /authorize` **no duplica**: marca `DualRo
 | `GET /asignarPrece/:Nivel?Sexo=` | Dormitorio/preceptor que corresponde por nivel académico y sexo (consulta `Bedroom`). |
 | `GET /autorizadorSalida?tipo=2\|3&nivelAcademico=&sexo=` | Resuelve quién autoriza salidas ESPECIAL(2)/A CASA(3) según el switch `AUTORIZADOR_SALIDAS` en `Configuracion`: `{ IdEmpleado, NoDepto, modo }`. Modo `COORDINADOR` = **híbrido**: usa el override de config si está, si no resuelve al ADMINISTRATIVO activo de Coordinación (auto-hereda el cambio de coordinador); modo `PRECEPTOR` = misma resolución que hace hoy la app (Bedroom → preceptor del dormitorio). Sin fallback silencioso: 400 coordinador no resoluble / 404 preceptor no resuelto. |
 
+### Dashboard del coordinador — `GET /admin/dashboard?desde=&hasta=` (Auth: —)
+
+Conteos agregados para el panel del Coordinador de dormitorios (todo se calcula en SQL, sin filas
+de detalle): `pendientes` (bandeja del coordinador: tipos 2/3 `Pendiente`, ventana −30/+15 días,
+total + por dormitorio), `alumnosFuera` (salida de Caseta confirmada sin retorno confirmado — estado
+actual, todos los tipos), `actividadReciente` (últimos 10 valorados del periodo, tipos 2/3) y
+`totalesPorDormitorio` (solicitudes/aprobadas/rechazadas del periodo). Periodo default: semana
+actual (lunes → hoy) por `FechaSolicitada`; override `?desde=YYYY-MM-DD&hasta=YYYY-MM-DD`.
+El coordinador se resuelve con el mismo híbrido de `/autorizadorSalida`. Índices de apoyo en
+migración `007`.
+
 ## 9. Dormitorios y puntos — Auth: —
 
 - `GET /dormitorio/:Sexo/:NivelAcademico` (`bedroom.routes.js`) — registro de `Bedroom` para ese sexo/nivel (asignación de dormitorio al registrarse).
