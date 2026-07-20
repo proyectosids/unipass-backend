@@ -10,6 +10,28 @@ import { withConnection } from '../database/connection.js';
 // Regla de dashboard: Dormitorio = 5 en el perfil del consultante = vista global
 // (administracion); cualquier otro valor = solo su dormitorio.
 
+// Campos seguros para listados de permisos con datos del alumno. Lista EXPLICITA:
+// NO expone Contraseña/Correo/TokenCFM/Celular/FechaNacimiento de LoginUniPass.
+const PERMISSION_FIELDS = `Permission.IdPermission,
+        Permission.FechaSolicitada,
+        Permission.StatusPermission,
+        Permission.FechaSalida,
+        Permission.FechaRegreso,
+        Permission.Motivo,
+        Permission.IdUser,
+        Permission.IdTipoSalida,
+        Permission.Observaciones,
+        Permission.Aprobo,
+        TypeExit.IdTypeExit,
+        TypeExit.Descripcion,
+        LoginUniPass.IdLogin,
+        LoginUniPass.Matricula,
+        LoginUniPass.Nombre,
+        LoginUniPass.Apellidos,
+        LoginUniPass.TipoUser,
+        LoginUniPass.Sexo,
+        LoginUniPass.Dormitorio`;
+
 // === Lecturas ===
 
 export const findPermissionsByUserPaginated = (idUser, page, limit) =>
@@ -84,7 +106,7 @@ export const findPermissionsForAutorizacionByEmpleado = (idEmpleado) =>
     withConnection(async (pool) => {
         const result = await pool.request()
             .input('Id', sql.Int, idEmpleado)
-            .query(`SELECT Permission.*, TypeExit.*, LoginUniPass.*
+            .query(`SELECT ${PERMISSION_FIELDS}
                     FROM Permission
                     INNER JOIN Authorize ON Permission.IdPermission = Authorize.IdPermission
                     JOIN TypeExit ON Permission.IdTipoSalida = TypeExit.IdTypeExit

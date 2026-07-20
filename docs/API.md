@@ -236,7 +236,7 @@ Body: `{ FechaCheck, Estatus, Observaciones }` (`Estatus: 'Confirmada'` para con
 | `DELETE /permission/:Id` | Elimina el permiso. |
 | `PUT /permissionValorado/:Id` | Resolución final. Body `{ StatusPermission, Observaciones }`. Emite `permission_finalized` al alumno. |
 | `GET /PermissionsPreceptor/:Id` | Permisos pendientes de autorizar por el preceptor (`:Id` = IdEmpleado). Sin datos → `200 null`. |
-| `GET /permissionsEmployee/:Id` | Permisos pendientes de autorizar por un empleado/jefe. Sin datos → `200 []`. |
+| `GET /permissionsEmployee/:Id` | Permisos pendientes de autorizar por un empleado/jefe. Sin datos → `200 []`. Campos explícitos seguros (sin datos sensibles de `LoginUniPass`). |
 | `GET /permissionTop/Student/:Id` | Últimos 10 permisos del alumno. |
 | `GET /permissionTop/Employee/:Id` | Últimos 10 por autorizar del empleado. |
 | `GET /permissionTop/Preceptor/:Id` | Últimos 10 por autorizar del preceptor. |
