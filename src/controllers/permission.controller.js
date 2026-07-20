@@ -179,9 +179,7 @@ export const deletePermission = async (req, res) => {
 export const getPermissionForAutorizacion = async (req, res) => {
     try {
         const permissions = await findPermissionsForAutorizacionByEmpleado(req.params.Id);
-        if (permissions.length === 0) {
-            return res.status(404).json({ message: 'Dato no encontrado' });
-        }
+        // Lista vacia NO es error: 200 [] (antes 404, la app lo mapeaba a "sin pendientes").
         return res.json(permissions);
     } catch (error) {
         console.error('Error en el servidor:', error);
