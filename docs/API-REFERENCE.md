@@ -397,6 +397,50 @@ Semántica de cada bloque:
 | Coordinador ni configurado ni resoluble | 400 | `{ "message": "Coordinador de dormitorios no configurado ni resoluble" }` |
 | Error interno | 500 | `{ "message": "Error generando dashboard" }` |
 
+### GET /admin/reporte?desde=YYYY-MM-DD&hasta=YYYY-MM-DD
+
+Salidas valoradas (`Aprobada`/`Rechazada`) de tipos **2/3** con `FechaSalida` en el rango
+(`hasta` inclusivo; sin params = semana actual). Solo lectura.
+
+```json
+// 200
+[
+  { "idPermiso": 7039, "alumno": "IRVING YAEL PATRICIO GONZALEZ", "matricula": "221068",
+    "dormitorio": "H.V.N.U", "tipo": 3, "fechaSalida": "2026-07-24T13:30:00.000Z",
+    "fechaRegreso": "2026-07-26T15:00:00.000Z", "autorizadoPor": "TERESA LOPEZ ROSAS",
+    "status": "Aprobada" }
+]
+```
+
+- `autorizadoPor` = nombre de quien dio la valoración final (`Authorize` → `LoginUniPass` por
+  matrícula); `""` si el permiso no tiene cadena de autorización registrada.
+- `dormitorio` = `Bedroom.Nombre` del alumno (fallback `Dormitorio <n>`).
+- Sin resultados → `200 []`.
+
+### GET /admin/observaciones?desde=YYYY-MM-DD&hasta=YYYY-MM-DD
+
+Observaciones **no vacías** de checadores (una por check) con `FechaCheck` en el rango. El
+placeholder `'Ninguna'` se trata como vacío y se excluye. Solo lectura.
+
+```json
+// 200
+[
+  { "idCheck": 2037, "idPermiso": 4031, "alumno": "IRVING YAEL PATRICIO GONZALEZ",
+    "dormitorio": "H.V.N.U", "paso": "Salida dormitorio", "checador": "IRVING YAEL PATRICIO GONZALEZ",
+    "fecha": "2026-07-20T23:57:19.130Z", "observacion": "salió antes de su hora" }
+]
+```
+
+- `paso` ∈ {`Salida dormitorio`, `Salida caseta`, `Retorno caseta`, `Retorno dormitorio`} (derivado de
+  `Accion` + `NombrePunto`).
+- `checador` = nombre resuelto desde `CheckPoints.ConfirmadoPor`; `""` si el check no fue confirmado.
+- La observación se almacena **por check** (columna en cada fila de `CheckPoints`), no se comparte ni
+  sobreescribe entre los 4 pasos de un permiso.
+- Sin resultados → `200 []`.
+
+**Error de rango (ambos endpoints):** `400 { "message": "Rango invalido: desde y hasta en formato
+YYYY-MM-DD, desde <= hasta" }` (formato inválido, falta uno de los dos, o `desde > hasta`).
+
 ---
 
 ## 6. Dormitorios, puntos, cargos

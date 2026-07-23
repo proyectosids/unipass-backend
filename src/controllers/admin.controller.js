@@ -1,22 +1,22 @@
 import { findConfigValue } from '../repositories/config.repo.js';
 import { findCoordinadorActivo } from '../repositories/user.repo.js';
-import { getAdminDashboardData } from '../repositories/adminDashboard.repo.js';
+import {
+    getAdminDashboardData,
+    findReporteSalidas,
+    findObservacionesChecadores
+} from '../repositories/adminDashboard.repo.js';
+import { parseRangoFechas, RangoInvalidoError } from '../util/dateRange.js';
 
-// Controlador del panel del Coordinador de dormitorios (conteos agregados).
+// Controlador del panel del Coordinador de dormitorios (conteos agregados + reportes).
 
 const enteroPositivoONull = (valor) => {
     const n = Number(valor);
     return Number.isInteger(n) && n > 0 ? n : null;
 };
 
-// 'YYYY-MM-DD' -> Date local a las 00:00, o null si es invalida.
-const parseFecha = (s) => {
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(String(s))) return null;
-    const d = new Date(`${s}T00:00:00`);
-    return Number.isNaN(d.getTime()) ? null : d;
-};
-
 const nombreDormitorio = (r) => r.Nombre ?? `Dormitorio ${r.IdDormitorio}`;
+
+const toISO = (f) => (f instanceof Date ? f.toISOString() : f);
 
 // GET /admin/dashboard?desde=YYYY-MM-DD&hasta=YYYY-MM-DD
 // Periodo default: semana actual (lunes 00:00 -> hoy inclusive). El periodo aplica a
@@ -26,26 +26,14 @@ const nombreDormitorio = (r) => r.Nombre ?? `Dormitorio ${r.IdDormitorio}`;
 // override en Configuracion o ADMINISTRATIVO activo de Coordinacion.
 export const getAdminDashboard = async (req, res) => {
     try {
-        const { desde, hasta } = req.query;
-
         let dDesde, dHastaEx;
-        if (desde !== undefined || hasta !== undefined) {
-            const dHasta = parseFecha(hasta);
-            dDesde = parseFecha(desde);
-            if (!dDesde || !dHasta || dHasta < dDesde) {
+        try {
+            ({ desde: dDesde, hastaEx: dHastaEx } = parseRangoFechas(req.query));
+        } catch (e) {
+            if (e instanceof RangoInvalidoError) {
                 return res.status(400).json({ message: 'Rango invalido: desde y hasta van juntos en formato YYYY-MM-DD, con desde <= hasta' });
             }
-            dHastaEx = new Date(dHasta);
-            dHastaEx.setDate(dHastaEx.getDate() + 1); // hasta inclusive
-        } else {
-            const hoy = new Date();
-            const offsetLunes = (hoy.getDay() + 6) % 7; // 0 = lunes
-            dDesde = new Date(hoy);
-            dDesde.setDate(hoy.getDate() - offsetLunes);
-            dDesde.setHours(0, 0, 0, 0);
-            dHastaEx = new Date(hoy);
-            dHastaEx.setDate(hoy.getDate() + 1);
-            dHastaEx.setHours(0, 0, 0, 0);
+            throw e;
         }
 
         // Coordinador: override en Configuracion o resolucion por rol (hibrido).
@@ -94,5 +82,66 @@ export const getAdminDashboard = async (req, res) => {
     } catch (error) {
         console.error('Error generando dashboard admin:', error);
         return res.status(500).json({ message: 'Error generando dashboard' });
+    }
+};
+
+const MENSAJE_RANGO = 'Rango invalido: desde y hasta en formato YYYY-MM-DD, desde <= hasta';
+
+// GET /admin/reporte?desde=&hasta=  -> salidas valoradas (Aprobada/Rechazada) tipo 2/3
+// con FechaSalida en el rango (hasta inclusivo). Sin params -> semana actual. [] si vacio.
+export const getReporteSalidas = async (req, res) => {
+    try {
+        let rango;
+        try {
+            rango = parseRangoFechas(req.query);
+        } catch (e) {
+            if (e instanceof RangoInvalidoError) return res.status(400).json({ message: MENSAJE_RANGO });
+            throw e;
+        }
+
+        const filas = await findReporteSalidas(rango);
+        return res.json(filas.map((r) => ({
+            idPermiso: r.IdPermission,
+            alumno: r.Alumno,
+            matricula: r.Matricula,
+            dormitorio: r.Dormitorio,
+            tipo: r.IdTipoSalida,
+            fechaSalida: toISO(r.FechaSalida),
+            fechaRegreso: toISO(r.FechaRegreso),
+            autorizadoPor: r.AutorizadoPor,
+            status: r.StatusPermission
+        })));
+    } catch (error) {
+        console.error('Error generando reporte de salidas:', error);
+        return res.status(500).json({ message: 'Error generando reporte' });
+    }
+};
+
+// GET /admin/observaciones?desde=&hasta=  -> observaciones no vacias de checadores
+// (una por check) con FechaCheck en el rango (hasta inclusivo). [] si vacio.
+export const getObservacionesChecadores = async (req, res) => {
+    try {
+        let rango;
+        try {
+            rango = parseRangoFechas(req.query);
+        } catch (e) {
+            if (e instanceof RangoInvalidoError) return res.status(400).json({ message: MENSAJE_RANGO });
+            throw e;
+        }
+
+        const filas = await findObservacionesChecadores(rango);
+        return res.json(filas.map((r) => ({
+            idCheck: r.IdCheck,
+            idPermiso: r.IdPermission,
+            alumno: r.Alumno,
+            dormitorio: r.Dormitorio,
+            paso: r.Paso,
+            checador: r.Checador,
+            fecha: toISO(r.FechaCheck),
+            observacion: r.Observaciones
+        })));
+    } catch (error) {
+        console.error('Error generando observaciones:', error);
+        return res.status(500).json({ message: 'Error generando observaciones' });
     }
 };

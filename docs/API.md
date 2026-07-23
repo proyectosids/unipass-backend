@@ -269,6 +269,21 @@ actual (lunes → hoy) por `FechaSolicitada`; override `?desde=YYYY-MM-DD&hasta=
 El coordinador se resuelve con el mismo híbrido de `/autorizadorSalida`. Índices de apoyo en
 migración `007`.
 
+### Reportes del coordinador (Auth: —)
+
+Solo lectura, filtran por rango de fechas (`?desde=YYYY-MM-DD&hasta=YYYY-MM-DD`, `hasta` inclusivo;
+sin params = semana actual). Rango inválido → `400 { "message": "Rango invalido: desde y hasta en
+formato YYYY-MM-DD, desde <= hasta" }`. Vacío → `200 []`.
+
+- `GET /admin/reporte` — salidas valoradas (`Aprobada`/`Rechazada`) tipos 2/3 con `FechaSalida` en el
+  rango: `[ { idPermiso, alumno, matricula, dormitorio, tipo, fechaSalida, fechaRegreso, autorizadoPor, status } ]`.
+  `autorizadoPor` = quien dio la valoración final (vía `Authorize`; vacío si el permiso no tiene cadena).
+- `GET /admin/observaciones` — observaciones **no vacías** de checadores (una por check, `'Ninguna'` se
+  trata como vacío) con `FechaCheck` en el rango: `[ { idCheck, idPermiso, alumno, dormitorio, paso,
+  checador, fecha, observacion } ]`. `paso` ∈ {Salida dormitorio, Salida caseta, Retorno caseta, Retorno
+  dormitorio}. Las observaciones se guardan **por check** (columna `CheckPoints.Observaciones` por fila,
+  no se sobreescriben entre los 4 pasos).
+
 ## 9. Dormitorios y puntos — Auth: —
 
 - `GET /dormitorio/:Sexo/:NivelAcademico` (`bedroom.routes.js`) — registro de `Bedroom` para ese sexo/nivel (asignación de dormitorio al registrarse).

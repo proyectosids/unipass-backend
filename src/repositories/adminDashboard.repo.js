@@ -88,3 +88,69 @@ export const getAdminDashboardData = ({ idCoordinador, desde, hastaExclusivo }) 
             totales: totales.recordset
         };
     });
+
+// Reporte de salidas valoradas (Aprobada/Rechazada), tipos 2/3, con FechaSalida en
+// el rango. autorizadoPor = quien dio la valoracion final (Authorize -> LoginUniPass
+// por matricula); vacio si el permiso no tiene cadena de Authorize.
+export const findReporteSalidas = ({ desde, hastaEx }) =>
+    withConnection(async (pool) => {
+        const result = await pool.request()
+            .input('Desde', sql.DateTime, desde)
+            .input('HastaEx', sql.DateTime, hastaEx)
+            .query(`
+                SELECT P.IdPermission,
+                       LTRIM(RTRIM(CONCAT(L.Nombre, ' ', L.Apellidos))) AS Alumno,
+                       L.Matricula,
+                       COALESCE(B.Nombre, CONCAT('Dormitorio ', L.Dormitorio)) AS Dormitorio,
+                       P.IdTipoSalida, P.FechaSalida, P.FechaRegreso, P.StatusPermission,
+                       COALESCE(AUT.Nombre, '') AS AutorizadoPor
+                FROM Permission P
+                INNER JOIN LoginUniPass L ON L.IdLogin = P.IdUser
+                LEFT JOIN Bedroom B ON B.IdBedroom = L.Dormitorio
+                OUTER APPLY (
+                    SELECT TOP 1 LTRIM(RTRIM(CONCAT(L2.Nombre, ' ', L2.Apellidos))) AS Nombre
+                    FROM Authorize A
+                    LEFT JOIN LoginUniPass L2 ON L2.Matricula = CAST(A.IdEmpleado AS VARCHAR(20))
+                    WHERE A.IdPermission = P.IdPermission
+                      AND A.StatusAuthorize = P.StatusPermission
+                    ORDER BY A.FechaAprobacion DESC
+                ) AUT
+                WHERE P.StatusPermission IN ('Aprobada', 'Rechazada')
+                  AND P.IdTipoSalida IN (2, 3)
+                  AND P.FechaSalida >= @Desde AND P.FechaSalida < @HastaEx
+                ORDER BY P.FechaSalida DESC`);
+        return result.recordset;
+    });
+
+// Observaciones NO vacias de checadores (una por check), con FechaCheck en el rango.
+// 'Ninguna' es el placeholder por defecto -> se trata como vacio.
+export const findObservacionesChecadores = ({ desde, hastaEx }) =>
+    withConnection(async (pool) => {
+        const result = await pool.request()
+            .input('Desde', sql.DateTime, desde)
+            .input('HastaEx', sql.DateTime, hastaEx)
+            .query(`
+                SELECT CP.IdCheck, CP.IdPermission,
+                       LTRIM(RTRIM(CONCAT(L.Nombre, ' ', L.Apellidos))) AS Alumno,
+                       COALESCE(B.Nombre, CONCAT('Dormitorio ', L.Dormitorio)) AS Dormitorio,
+                       CASE
+                           WHEN CP.Accion = 'SALIDA'  AND PT.NombrePunto = 'Dormitorio' THEN 'Salida dormitorio'
+                           WHEN CP.Accion = 'SALIDA'  AND PT.NombrePunto = 'Caseta'     THEN 'Salida caseta'
+                           WHEN CP.Accion = 'RETORNO' AND PT.NombrePunto = 'Caseta'     THEN 'Retorno caseta'
+                           WHEN CP.Accion = 'RETORNO' AND PT.NombrePunto = 'Dormitorio' THEN 'Retorno dormitorio'
+                       END AS Paso,
+                       COALESCE(LTRIM(RTRIM(CONCAT(LC.Nombre, ' ', LC.Apellidos))), '') AS Checador,
+                       CP.FechaCheck, CP.Observaciones
+                FROM CheckPoints CP
+                INNER JOIN Point PT ON PT.IdPoint = CP.IdPoint
+                INNER JOIN Permission P ON P.IdPermission = CP.IdPermission
+                INNER JOIN LoginUniPass L ON L.IdLogin = P.IdUser
+                LEFT JOIN Bedroom B ON B.IdBedroom = L.Dormitorio
+                LEFT JOIN LoginUniPass LC ON LC.IdLogin = CP.ConfirmadoPor
+                WHERE CP.Observaciones IS NOT NULL
+                  AND LTRIM(RTRIM(CP.Observaciones)) <> ''
+                  AND LTRIM(RTRIM(CP.Observaciones)) <> 'Ninguna'
+                  AND CP.FechaCheck >= @Desde AND CP.FechaCheck < @HastaEx
+                ORDER BY CP.FechaCheck DESC`);
+        return result.recordset;
+    });
