@@ -236,9 +236,7 @@ export const autorizarPermiso = async (req, res) => {
 export const topPermissionStudent = async (req, res) => {
     try {
         const top = await findTop10PermissionsByStudent(req.params.Id);
-        if (top.length === 0) {
-            return res.status(404).json({ message: 'Dato no encontrado' });
-        }
+        // Lista vacia NO es error: 200 [] (antes 404).
         return res.json(top);
     } catch (error) {
         console.error('Error en el servidor:', error);
@@ -249,9 +247,7 @@ export const topPermissionStudent = async (req, res) => {
 export const topPermissionEmployee = async (req, res) => {
     try {
         const top = await findTop10PermissionsByEmployee(req.params.Id);
-        if (top.length === 0) {
-            return res.status(404).json({ message: 'Dato no encontrado' });
-        }
+        // Lista vacia NO es error: 200 [] (antes 404).
         return res.json(top);
     } catch (error) {
         console.error('Error en el servidor:', error);
@@ -262,9 +258,7 @@ export const topPermissionEmployee = async (req, res) => {
 export const topPermissionPrece = async (req, res) => {
     try {
         const top = await findTop10PermissionsByPrece(req.params.Id);
-        if (top.length === 0) {
-            return res.status(404).json({ message: 'Dato no encontrado' });
-        }
+        // Lista vacia NO es error: 200 [] (antes 404).
         return res.json(top);
     } catch (error) {
         console.error('Error en el servidor:', error);

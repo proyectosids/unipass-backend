@@ -170,7 +170,7 @@ manda hora local sin offset. **200**: eco con `Id` (IdPermission). **400**
   es **único aprobador** o el eslabón previo ya aprobó. Ventana: `FechaSalida` entre −30 y +15 días.
   Sin datos → `200 null`. Campos explícitos seguros (mismo set que `/permissionsEmployee`).
 - `GET /permissionsEmployee/:Id` — permisos asignados al empleado `:Id` (misma ventana). Sin datos → `200 []` (arreglo vacío, no 404). Campos **explícitos y seguros** (sin `Contraseña`/`Correo`/`TokenCFM`): `IdPermission, FechaSolicitada, StatusPermission, FechaSalida, FechaRegreso, Motivo, IdUser, IdTipoSalida, Observaciones, Aprobo, IdTypeExit, Descripcion, IdLogin, Matricula, Nombre, Apellidos, TipoUser, Sexo, Dormitorio`.
-- `GET /permissionTop/Student/:Id` · `/Employee/:Id` · `/Preceptor/:Id` — últimos 10 de cada bandeja. Sin datos → 404. Employee/Preceptor con campos explícitos seguros (mismo set que `/permissionsEmployee`); Student solo lee `Permission` (sin JOIN a usuario).
+- `GET /permissionTop/Student/:Id` · `/Employee/:Id` · `/Preceptor/:Id` — últimos 10 de cada bandeja. Sin datos → `200 []`. Employee/Preceptor con campos explícitos seguros (mismo set que `/permissionsEmployee`); Student solo lee `Permission` (sin JOIN a usuario).
 
 ### Dashboards (preceptor/administrativo)
 
