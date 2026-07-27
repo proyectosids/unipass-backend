@@ -8,10 +8,12 @@ import { withConnection } from '../database/connection.js';
 
 export const getAdminDashboardData = ({ idCoordinador, desde, hastaExclusivo }) =>
     withConnection(async (pool) => {
+        // Rango como fecha de calendario (VarChar 'YYYY-MM-DD') para comparar con
+        // CAST(col AS DATE) y evitar el shift de zona horaria (ver util/dateRange.js).
         const base = () => pool.request()
             .input('IdCoordinador', sql.Int, idCoordinador)
-            .input('Desde', sql.DateTime, desde)
-            .input('HastaEx', sql.DateTime, hastaExclusivo);
+            .input('Desde', sql.VarChar(10), desde)
+            .input('HastaEx', sql.VarChar(10), hastaExclusivo);
 
         // Pendientes de la bandeja del coordinador: tipo 2/3, StatusPermission
         // 'Pendiente', misma ventana -30/+15 dias que /permissionsEmployee.
@@ -63,7 +65,7 @@ export const getAdminDashboardData = ({ idCoordinador, desde, hastaExclusivo }) 
             LEFT JOIN Authorize A ON A.IdPermission = P.IdPermission AND A.FechaAprobacion IS NOT NULL
             WHERE P.StatusPermission IN ('Aprobada', 'Rechazada')
               AND P.IdTipoSalida IN (2, 3)
-              AND P.FechaSolicitada >= @Desde AND P.FechaSolicitada < @HastaEx
+              AND CAST(P.FechaSolicitada AS DATE) >= @Desde AND CAST(P.FechaSolicitada AS DATE) < @HastaEx
             GROUP BY P.IdPermission, L.Nombre, L.Apellidos, P.IdTipoSalida, P.StatusPermission, P.FechaSolicitada
             ORDER BY Fecha DESC`);
 
@@ -77,7 +79,7 @@ export const getAdminDashboardData = ({ idCoordinador, desde, hastaExclusivo }) 
             INNER JOIN LoginUniPass L ON L.IdLogin = P.IdUser
             LEFT JOIN Bedroom B ON B.IdBedroom = L.Dormitorio
             WHERE P.IdTipoSalida IN (2, 3)
-              AND P.FechaSolicitada >= @Desde AND P.FechaSolicitada < @HastaEx
+              AND CAST(P.FechaSolicitada AS DATE) >= @Desde AND CAST(P.FechaSolicitada AS DATE) < @HastaEx
             GROUP BY L.Dormitorio, B.Nombre
             ORDER BY L.Dormitorio`);
 
@@ -95,8 +97,8 @@ export const getAdminDashboardData = ({ idCoordinador, desde, hastaExclusivo }) 
 export const findReporteSalidas = ({ desde, hastaEx }) =>
     withConnection(async (pool) => {
         const result = await pool.request()
-            .input('Desde', sql.DateTime, desde)
-            .input('HastaEx', sql.DateTime, hastaEx)
+            .input('Desde', sql.VarChar(10), desde)
+            .input('HastaEx', sql.VarChar(10), hastaEx)
             .query(`
                 SELECT P.IdPermission,
                        LTRIM(RTRIM(CONCAT(L.Nombre, ' ', L.Apellidos))) AS Alumno,
@@ -117,7 +119,7 @@ export const findReporteSalidas = ({ desde, hastaEx }) =>
                 ) AUT
                 WHERE P.StatusPermission IN ('Aprobada', 'Rechazada')
                   AND P.IdTipoSalida IN (2, 3)
-                  AND P.FechaSalida >= @Desde AND P.FechaSalida < @HastaEx
+                  AND CAST(P.FechaSalida AS DATE) >= @Desde AND CAST(P.FechaSalida AS DATE) < @HastaEx
                 ORDER BY P.FechaSalida DESC`);
         return result.recordset;
     });
@@ -127,8 +129,8 @@ export const findReporteSalidas = ({ desde, hastaEx }) =>
 export const findObservacionesChecadores = ({ desde, hastaEx }) =>
     withConnection(async (pool) => {
         const result = await pool.request()
-            .input('Desde', sql.DateTime, desde)
-            .input('HastaEx', sql.DateTime, hastaEx)
+            .input('Desde', sql.VarChar(10), desde)
+            .input('HastaEx', sql.VarChar(10), hastaEx)
             .query(`
                 SELECT CP.IdCheck, CP.IdPermission,
                        LTRIM(RTRIM(CONCAT(L.Nombre, ' ', L.Apellidos))) AS Alumno,
@@ -150,7 +152,7 @@ export const findObservacionesChecadores = ({ desde, hastaEx }) =>
                 WHERE CP.Observaciones IS NOT NULL
                   AND LTRIM(RTRIM(CP.Observaciones)) <> ''
                   AND LTRIM(RTRIM(CP.Observaciones)) <> 'Ninguna'
-                  AND CP.FechaCheck >= @Desde AND CP.FechaCheck < @HastaEx
+                  AND CAST(CP.FechaCheck AS DATE) >= @Desde AND CAST(CP.FechaCheck AS DATE) < @HastaEx
                 ORDER BY CP.FechaCheck DESC`);
         return result.recordset;
     });

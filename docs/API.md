@@ -265,15 +265,17 @@ de detalle): `pendientes` (bandeja del coordinador: tipos 2/3 `Pendiente`, venta
 total + por dormitorio), `alumnosFuera` (salida de Caseta confirmada sin retorno confirmado — estado
 actual, todos los tipos), `actividadReciente` (últimos 10 valorados del periodo, tipos 2/3) y
 `totalesPorDormitorio` (solicitudes/aprobadas/rechazadas del periodo). Periodo default: semana
-actual (lunes → hoy) por `FechaSolicitada`; override `?desde=YYYY-MM-DD&hasta=YYYY-MM-DD`.
+actual (lunes → hoy) por `FechaSolicitada`; override `?desde=YYYY-MM-DD&hasta=YYYY-MM-DD`. El
+filtro es por **fecha de calendario** (`CAST(... AS DATE)`), así que el día de hoy y el día `hasta`
+quedan incluidos completos, sin importar la hora ni la zona horaria.
 El coordinador se resuelve con el mismo híbrido de `/autorizadorSalida`. Índices de apoyo en
 migración `007`.
 
 ### Reportes del coordinador (Auth: —)
 
-Solo lectura, filtran por rango de fechas (`?desde=YYYY-MM-DD&hasta=YYYY-MM-DD`, `hasta` inclusivo;
-sin params = semana actual). Rango inválido → `400 { "message": "Rango invalido: desde y hasta en
-formato YYYY-MM-DD, desde <= hasta" }`. Vacío → `200 []`.
+Solo lectura, filtran por **fecha de calendario** (`?desde=YYYY-MM-DD&hasta=YYYY-MM-DD`, `hasta`
+inclusivo, día completo sin importar hora/zona; sin params = semana actual). Rango inválido →
+`400 { "message": "Rango invalido: desde y hasta en formato YYYY-MM-DD, desde <= hasta" }`. Vacío → `200 []`.
 
 - `GET /admin/reporte` — salidas valoradas (`Aprobada`/`Rechazada`) tipos 2/3 con `FechaSalida` en el
   rango: `[ { idPermiso, alumno, matricula, dormitorio, tipo, fechaSalida, fechaRegreso, autorizadoPor, status } ]`.

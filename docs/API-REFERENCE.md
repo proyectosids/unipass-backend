@@ -358,8 +358,10 @@ Al confirmar registra `ConfirmadoPor = IdLogin` del checador y emite `check_upda
 ### GET /admin/dashboard?desde=YYYY-MM-DD&hasta=YYYY-MM-DD
 
 Panel del Coordinador de dormitorios: conteos agregados calculados en SQL (COUNT/GROUP BY).
-Periodo default: **semana actual** (lunes 00:00 → hoy, por `FechaSolicitada`); `desde`/`hasta`
-van juntos y `hasta` es inclusivo. El coordinador se resuelve con el mismo híbrido de
+Periodo default: **semana actual** (lunes → hoy, por `FechaSolicitada`); `desde`/`hasta`
+van juntos y `hasta` es inclusivo. El filtro compara por **fecha de calendario**
+(`CAST(FechaSolicitada AS DATE)`), de modo que el día de hoy y el día `hasta` se incluyen
+completos sin importar la hora ni la zona horaria (evita el shift de −6h del almacenamiento). El coordinador se resuelve con el mismo híbrido de
 `/autorizadorSalida` (override en `Configuracion` o ADMINISTRATIVO activo de Coordinación).
 
 ```json
