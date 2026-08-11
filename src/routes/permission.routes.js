@@ -1,4 +1,6 @@
 import { Router } from "express";
+import { verifyToken } from "../Middleware/verifityToken.js";
+import { requireCapability } from "../Middleware/requireCapability.js";
 import { autorizarPermiso, cancelPermission, createPermission, DashboardDocumentos, DashboardPermission, deletePermission, filtrarPermisos, getPermissionForAutorizacion, getPermissionForAutorizacionPrece, getPermissionsByUser, topPermissionEmployee, topPermissionPrece, topPermissionStudent } from "../controllers/permission.controller.js";
 
 const router = Router();
@@ -14,7 +16,9 @@ router.get("/permissionsEmployee/:Id", getPermissionForAutorizacion);
 // Ciclo de vida del permiso
 router.post("/permission", createPermission);
 
-router.delete("/permission/:Id", deletePermission);
+// Task 7 (§8): Frontend confirmo que NO consume este endpoint. Se cierra a ADMIN
+// (operacion administrativa interna); las cancelaciones normales usan PUT /permission/:Id.
+router.delete("/permission/:Id", verifyToken, requireCapability(['ADMIN']), deletePermission);
 
 router.put("/permission/:Id", cancelPermission); // cancela (StatusPermission = 'Cancelado')
 

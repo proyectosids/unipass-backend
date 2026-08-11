@@ -188,6 +188,9 @@ export const getArchivosAlumno = async (req, res) => {
 };
 
 export const aprobarDocumento = async (req, res) => {
+    // Task 7.3: candidato a endpoint muerto (Frontend no lo consume). Log para juntar
+    // evidencia de uso real antes de deprecar/eliminar. No cambia el comportamiento.
+    console.warn(`[DEPRECATION][Task7] PUT /statusRevision/:Id invocado (IdLogin=${req.params.Id}) — candidato a endpoint muerto`);
     try {
         const updated = await approveDocument(req.params.Id, req.body.IdDocumento);
         if (!updated) {
