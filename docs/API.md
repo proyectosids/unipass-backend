@@ -87,12 +87,17 @@ Confirmar un paso exige que el anterior esté `Confirmada` (si no → `409 CHECK
   Payload: `{ id, matricula, nombre, apellidos, tipo, dormitorio }` (disponible como `req.user`).
 - **Refresh token** opaco (32 bytes hex), vive 30 días, se guarda **hasheado** en BD y **rota** en
   cada uso. Si se reutiliza un refresh ya rotado, se revocan **todas** las sesiones del usuario.
-- **Capabilities**: además del rol, `/login` y `/verifyToken` devuelven las capabilities aditivas
-  vigentes (hoy solo `CHECKER`), para que el cliente muestre pantallas por permiso y no por `TipoUser`:
+- **Capabilities**: además del rol, `/login`, `/verifyToken` y `/getCapabilities` devuelven las
+  capabilities aditivas vigentes, para que el cliente muestre pantallas por permiso y no por `TipoUser`:
   ```json
   { "type": "CHECKER", "pointType": "Dormitorio", "idDormitorio": 4, "scope": "AMBOS" }
+  { "type": "SUPERVISOR" }
   ```
-  (para `pointType: "Caseta"` no se incluye `idDormitorio`).
+  (para `CHECKER` con `pointType: "Caseta"` no se incluye `idDormitorio`; `SUPERVISOR` es global y no
+  lleva más campos). Ambas viven en `CheckerGrant` (columna `Capability`, migración `008`).
+- **`requireCapability([...])`** (`src/Middleware/requireCapability.js`): autoriza por capability
+  **efectiva** = derivada del rol (`TipoUser='ADMINISTRATIVO'` → `ADMIN`) + otorgadas (`CHECKER`,
+  `SUPERVISOR`). 401 sin token, 403 `FORBIDDEN_CAPABILITY` si no tiene ninguna de las permitidas.
 
 ### Middleware
 
@@ -188,7 +193,9 @@ Un grant está **vigente** si `Activo = 1` y (`Vigencia = 'PERMANENTE'` o `Fecha
 | `PUT /checkerGrant/:idGrant` | Body `{ Activo: 0\|1 }`. 400 `INVALID_ACTIVO`, 404 `GRANT_NOT_FOUND`. |
 | `DELETE /checkerGrant/:idGrant` | Revoca definitivamente (DELETE físico). 404 `GRANT_NOT_FOUND`. |
 | `GET /buscarPersona/:Nombre` | Personas **asignables** como checador. LIKE parcial sobre nombre/apellidos/nombre completo, **insensible a mayúsculas y acentos** (`COLLATE Latin1_General_CI_AI`), solo `StatusActividad = 1`, excluye DEPARTAMENTO. Devuelve **solo campos seguros**: `IdLogin, Matricula, Nombre, Apellidos, TipoUser`. Lista vacía si no hay match. |
-| `GET /getCapabilities` | Auth: ✅ Bearer (cualquier rol). `{ capabilities: [...] }` del usuario autenticado. |
+| `GET /getCapabilities` | Auth: ✅ Bearer (cualquier rol). `{ capabilities: [...] }` del usuario autenticado (incluye `CHECKER` y/o `SUPERVISOR`). |
+| `POST /supervisorGrant` | Auth: ✅ Bearer + capability `ADMIN`. Body `{ IdLogin }`. Otorga/reactiva SUPERVISOR (global, solo lectura). 201 nuevo / 200 reactivado; 403 si no es ADMIN. |
+| `DELETE /supervisorGrant/:idLogin` | Auth: ✅ Bearer + capability `ADMIN`. Revoca SUPERVISOR. 404 `GRANT_NOT_FOUND`. |
 
 ### Checks (`checks.routes.js`)
 
@@ -258,7 +265,12 @@ le tocan ambos roles, el segundo `POST /authorize` **no duplica**: marca `DualRo
 | `GET /asignarPrece/:Nivel?Sexo=` | Dormitorio/preceptor que corresponde por nivel académico y sexo (consulta `Bedroom`). |
 | `GET /autorizadorSalida?tipo=2\|3&nivelAcademico=&sexo=` | Resuelve quién autoriza salidas ESPECIAL(2)/A CASA(3) según el switch `AUTORIZADOR_SALIDAS` en `Configuracion`: `{ IdEmpleado, NoDepto, modo }`. Modo `COORDINADOR` = **híbrido**: usa el override de config si está, si no resuelve al ADMINISTRATIVO activo de Coordinación (auto-hereda el cambio de coordinador); modo `PRECEPTOR` = misma resolución que hace hoy la app (Bedroom → preceptor del dormitorio). Sin fallback silencioso: 400 coordinador no resoluble / 404 preceptor no resuelto. |
 
-### Dashboard del coordinador — `GET /admin/dashboard?desde=&hasta=` (Auth: —)
+### Dashboard del coordinador — `GET /admin/dashboard?desde=&hasta=` (Auth: ✅ Bearer + capability `ADMIN`|`SUPERVISOR`)
+
+> Los tres endpoints `/admin/*` (dashboard, reporte, observaciones) requieren token y capability
+> `ADMIN` (coordinador ADMINISTRATIVO) **o** `SUPERVISOR`. Sin token → 401; autenticado sin la
+> capability → 403 `FORBIDDEN_CAPABILITY`. SUPERVISOR es solo lectura (no accede a escritura).
+
 
 Conteos agregados para el panel del Coordinador de dormitorios (todo se calcula en SQL, sin filas
 de detalle): `pendientes` (bandeja del coordinador: tipos 2/3 `Pendiente`, ventana −30/+15 días,

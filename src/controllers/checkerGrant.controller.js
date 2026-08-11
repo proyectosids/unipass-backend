@@ -4,7 +4,9 @@ import {
     findGrantsByLogin,
     findCapabilitiesByLogin,
     setGrantActivo,
-    deleteGrant
+    deleteGrant,
+    createOrReactivateSupervisorGrant,
+    deleteSupervisorGrant
 } from '../repositories/checkerGrant.repo.js';
 import { searchAssignablePersonsByName } from '../repositories/user.repo.js';
 
@@ -137,6 +139,36 @@ export const deleteCheckerGrant = async (req, res) => {
     } catch (error) {
         console.error('Error al revocar grant:', error);
         return res.status(500).json({ message: 'Error al revocar el grant', code: 'SERVER_ERROR' });
+    }
+};
+
+// POST /supervisorGrant  { IdLogin }  -> otorga capability SUPERVISOR (solo ADMIN).
+// Global, solo lectura: AsignadoPor = admin del token. 201 nuevo / 200 reactivado.
+export const postSupervisorGrant = async (req, res) => {
+    try {
+        const { IdLogin } = req.body || {};
+        if (!IdLogin) {
+            return res.status(400).json({ message: 'IdLogin es obligatorio', code: 'MISSING_FIELDS' });
+        }
+        const { grant, reactivated } = await createOrReactivateSupervisorGrant(IdLogin, req.user.id);
+        return res.status(reactivated ? 200 : 201).json(grant);
+    } catch (error) {
+        console.error('Error al asignar SUPERVISOR:', error);
+        return res.status(500).json({ message: 'Error al asignar SUPERVISOR', code: 'SERVER_ERROR' });
+    }
+};
+
+// DELETE /supervisorGrant/:idLogin  -> revoca la capability SUPERVISOR (solo ADMIN).
+export const revokeSupervisorGrant = async (req, res) => {
+    try {
+        const deleted = await deleteSupervisorGrant(req.params.idLogin);
+        if (!deleted) {
+            return res.status(404).json({ message: 'SUPERVISOR no encontrado', code: 'GRANT_NOT_FOUND' });
+        }
+        return res.json({ message: 'SUPERVISOR revocado', code: 'GRANT_REVOKED' });
+    } catch (error) {
+        console.error('Error al revocar SUPERVISOR:', error);
+        return res.status(500).json({ message: 'Error al revocar SUPERVISOR', code: 'SERVER_ERROR' });
     }
 };
 

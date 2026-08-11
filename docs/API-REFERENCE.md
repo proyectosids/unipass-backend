@@ -355,6 +355,12 @@ Al confirmar registra `ConfirmadoPor = IdLogin` del checador y emite `check_upda
 
 ---
 
+> **🔒 Los tres endpoints `/admin/*` requieren `Authorization: Bearer <token>` + capability
+> `ADMIN` o `SUPERVISOR`.** Sin token → `401`; autenticado sin la capability → `403
+> { "message": "No tienes permiso para acceder a este recurso", "code": "FORBIDDEN_CAPABILITY" }`.
+> `ADMIN` = coordinador `ADMINISTRATIVO` (por rol). `SUPERVISOR` = capability otorgada con
+> `POST /supervisorGrant` (solo lectura; ver §5).
+
 ### GET /admin/dashboard?desde=YYYY-MM-DD&hasta=YYYY-MM-DD
 
 Panel del Coordinador de dormitorios: conteos agregados calculados en SQL (COUNT/GROUP BY).

@@ -63,18 +63,60 @@ export const findActiveGrantByTipo = (idLogin, tipo, idDormitorio = null) =>
     });
 
 // Capabilities vigentes del usuario para login / getCapabilities.
+// CHECKER -> { type, pointType, idDormitorio?, scope }; SUPERVISOR -> { type } (global).
 export const findCapabilitiesByLogin = (idLogin) =>
     withConnection(async (pool) => {
         const result = await pool.request()
             .input('IdLogin', sql.Int, idLogin)
-            .query(`SELECT Tipo, IdDormitorio, Scope FROM CheckerGrant
+            .query(`SELECT Capability, Tipo, IdDormitorio, Scope FROM CheckerGrant
                     WHERE IdLogin = @IdLogin AND ${VIGENTE}`);
-        return result.recordset.map((r) => ({
-            type: 'CHECKER',
-            pointType: r.Tipo,
-            ...(r.Tipo === 'Dormitorio' ? { idDormitorio: r.IdDormitorio } : {}),
-            scope: r.Scope
-        }));
+        return result.recordset.map((r) => {
+            if (r.Capability === 'SUPERVISOR') return { type: 'SUPERVISOR' };
+            return {
+                type: 'CHECKER',
+                pointType: r.Tipo,
+                ...(r.Tipo === 'Dormitorio' ? { idDormitorio: r.IdDormitorio } : {}),
+                scope: r.Scope
+            };
+        });
+    });
+
+// Otorga/reactiva la capability SUPERVISOR (global, solo lectura) sobre una cuenta.
+// Upsert por (IdLogin, Capability='SUPERVISOR'); reutiliza el esquema de CheckerGrant.
+export const createOrReactivateSupervisorGrant = (idLogin, asignadoPor) =>
+    withConnection(async (pool) => {
+        const existing = await pool.request()
+            .input('IdLogin', sql.Int, idLogin)
+            .query(`SELECT IdGrant FROM CheckerGrant
+                    WHERE IdLogin = @IdLogin AND Capability = 'SUPERVISOR'`);
+
+        if (existing.recordset.length > 0) {
+            const idGrant = existing.recordset[0].IdGrant;
+            const updated = await pool.request()
+                .input('IdGrant', sql.Int, idGrant)
+                .input('AsignadoPor', sql.Int, asignadoPor)
+                .query(`UPDATE CheckerGrant SET Activo = 1, AsignadoPor = @AsignadoPor
+                        WHERE IdGrant = @IdGrant;
+                        SELECT * FROM CheckerGrant WHERE IdGrant = @IdGrant;`);
+            return { grant: updated.recordset[0], reactivated: true };
+        }
+
+        const inserted = await pool.request()
+            .input('IdLogin', sql.Int, idLogin)
+            .input('AsignadoPor', sql.Int, asignadoPor)
+            .query(`INSERT INTO CheckerGrant (IdLogin, Capability, Tipo, IdDormitorio, Scope, AsignadoPor, Vigencia, Activo)
+                    VALUES (@IdLogin, 'SUPERVISOR', NULL, NULL, 'AMBOS', @AsignadoPor, 'PERMANENTE', 1);
+                    SELECT * FROM CheckerGrant WHERE IdGrant = SCOPE_IDENTITY();`);
+        return { grant: inserted.recordset[0], reactivated: false };
+    });
+
+// Revoca (borra) la capability SUPERVISOR de una cuenta.
+export const deleteSupervisorGrant = (idLogin) =>
+    withConnection(async (pool) => {
+        const result = await pool.request()
+            .input('IdLogin', sql.Int, idLogin)
+            .query(`DELETE FROM CheckerGrant WHERE IdLogin = @IdLogin AND Capability = 'SUPERVISOR'`);
+        return result.rowsAffected[0] > 0;
     });
 
 // Listado de grants scopeado por rol del que consulta (pantalla de gestion).
@@ -105,7 +147,7 @@ export const findGrantsByLogin = (idLogin) =>
             .query(`SELECT IdGrant, IdLogin, Tipo, IdDormitorio, Scope, Vigencia,
                            FechaExpira, Activo, AsignadoPor, FechaCreacion
                     FROM CheckerGrant
-                    WHERE IdLogin = @IdLogin
+                    WHERE IdLogin = @IdLogin AND Capability = 'CHECKER'
                     ORDER BY FechaCreacion DESC`);
         return result.recordset;
     });
