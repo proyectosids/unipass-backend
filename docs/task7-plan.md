@@ -99,10 +99,37 @@ Nota: un 403 en `/TokenDispositivo` no bloquea login (el cliente lo traga).
 
 ---
 
-## Task 7.3 — Revisión documental (diseño, no implementar aún)
-Modelo TOKEN + ROL + ÁMBITO. Reviewer (PRECEPTOR/EMPLEADO/VIGILANCIA) solo dentro de su
-dormitorio/ámbito. Identidad del reviewer desde token (hoy `rejectDocument` usa
-`MatriculaPreceptor` del body → debe ignorarse como identidad).
+## Task 7.3 — Revisión documental (CONTRATO propuesto; no implementar hasta handshake)
+
+Modelo **TOKEN + ROL + ÁMBITO**. No basta `usuario.tipo == PRECEPTOR`: el reviewer solo
+opera sobre alumnos de **su dormitorio**.
+
+**Identidad y ámbito del reviewer = del token** (no del body):
+- reviewer = `req.user.id` / `req.user.matricula`; dormitorio = `req.user.dormitorio`.
+- Roles reviewer permitidos: `PRECEPTOR`, `EMPLEADO`, `VIGILANCIA` (mismo set que hoy usa
+  `rejectDocument`). Se puede sumar `ADMINISTRATIVO`.
+- **Regla de ámbito** (derivada de los dashboards): permitido si
+  `req.user.dormitorio == alumno.Dormitorio`, **o** el reviewer es global
+  (`ADMINISTRATIVO` con `dormitorio == 5` → cubre dorms 1–4). Si no → **403 `FORBIDDEN_SCOPE`**.
+- El dormitorio del **alumno** se resuelve en BD desde el dueño del documento
+  (doc `IdLogin`/matrícula → `LoginUniPass.Dormitorio`), nunca del cliente.
+
+Infra a construir: `requireScopeDormitorio(resolveAlumnoDormitorio)` (análogo a
+`requireOwnership`, pero compara dormitorio del token contra el del alumno, con la excepción
+global dorm 5).
+
+| Endpoint | Rol | Identidad (token) | Ámbito | Corrige |
+|---|---|---|---|---|
+| `PUT /doctosMul/reject/:Id` | PRECEPTOR/EMPLEADO/VIGILANCIA | reviewer = token; `RechazadoPor` = `token.matricula` | alumno(`:Id`).Dormitorio ∈ scope | ⚠️ hoy usa `MatriculaPreceptor` del body → ignorar como identidad |
+| `PUT /statusRevision/:Id` (aprobar) | idem | reviewer = token | alumno(`:Id`).Dormitorio ∈ scope | 🔴 hoy no registra quién aprobó · **candidato muerto** (§10): decidir deprecar antes de endurecer |
+| `PUT /Documentacion/:Matricula` | reviewer / ADMIN | reviewer = token | alumno(`:Matricula`).Dormitorio ∈ scope | matrícula del path → validar contra scope |
+
+Nota: `DELETE /doctosMul/:Id` quedó **self-only** en 7.2 (alumno dueño). Si un preceptor
+debe poder borrar docs de su dormitorio, es una **extensión de scope** a decidir aquí
+(hoy no está permitido para reviewer). Requiere confirmación de Frontend.
+
+Pendiente de Frontend antes de gatear (§29): migrar estas llamadas a `AuthHttpClient` y
+confirmar Bearer; confirmar si `/statusRevision` sigue vivo; definir si el reviewer borra docs.
 
 ## Task 7.4 — Rediseño cadena de autorización (NO tocar hasta acordar contrato)
 Orquestación hoy en Flutter (`POST /permission`→`POST /authorize`; luego
