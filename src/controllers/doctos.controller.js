@@ -7,6 +7,8 @@ import {
     createDocument,
     updateDocumentArchivo,
     deleteDocument,
+    findDocumentById,
+    deleteDocumentById,
     findExpedientesByDormitorio,
     findArchivosFiltered,
     approveDocument,
@@ -130,17 +132,39 @@ export const uploadProfile = async (req, res) => {
 
 export const deleteFileDoc = async (req, res) => {
     try {
-        // Task 7.2: solo borra documentos propios (token.id); :Id del path se ignora.
+        // Task 7.2: identidad del token (:Id del path se ignora). Validacion de ownership
+        // ANTES de borrar. IdDoctos identifica un documento UNICO -> permite distinguir
+        // 403 (ajeno) de 404 (inexistente), como pidio Frontend. IdDocumento es un TIPO
+        // (compartido entre usuarios): via legacy segura, scoped al doc propio del token.
         const idLogin = req.user.id;
-        const fileRecord = await findDocumentByLoginAndType(idLogin, req.body.IdDocumento);
-        if (!fileRecord) {
-            return res.status(404).json({ message: 'Dato no encontrado' });
-        }
-        const archivoPath = fileRecord.Archivo;
+        const { IdDoctos, IdDocumento } = req.body;
 
-        const deleted = await deleteDocument(idLogin, req.body.IdDocumento);
+        let archivoPath;
+        let deleted;
+
+        if (IdDoctos !== undefined && IdDoctos !== null) {
+            const doc = await findDocumentById(IdDoctos);
+            if (!doc) {
+                return res.status(404).json({ message: 'Documento no encontrado', code: 'DOC_NOT_FOUND' });
+            }
+            if (Number(doc.IdLogin) !== Number(idLogin)) {
+                return res.status(403).json({ message: 'No puedes borrar un documento que no te pertenece', code: 'FORBIDDEN_OWNERSHIP' });
+            }
+            archivoPath = doc.Archivo;
+            deleted = await deleteDocumentById(IdDoctos);
+        } else {
+            // Legacy: IdDocumento = TIPO. Se opera solo sobre el doc propio (token.id);
+            // no puede alcanzar documentos ajenos, por lo que "no es tuyo" es 404.
+            const fileRecord = await findDocumentByLoginAndType(idLogin, IdDocumento);
+            if (!fileRecord) {
+                return res.status(404).json({ message: 'Documento no encontrado', code: 'DOC_NOT_FOUND' });
+            }
+            archivoPath = fileRecord.Archivo;
+            deleted = await deleteDocument(idLogin, IdDocumento);
+        }
+
         if (!deleted) {
-            return res.status(404).json({ message: 'Dato no encontrado' });
+            return res.status(404).json({ message: 'Documento no encontrado', code: 'DOC_NOT_FOUND' });
         }
 
         res.status(200).json({ message: 'DATO ELIMINADO' });

@@ -80,13 +80,27 @@ del token. Body identifiers aceptados por compatibilidad pero **ignorados** como
 | `PUT /permission/:Id` (cancelar) | token.id | `Permission.IdUser == token.id`; set `Cancelado` (no borra) | — | ✅ 401/403/200/404 |
 | `POST /doctosMul` | token.id | crea con `IdLogin = token.id` | `IdLogin` (body) | ✅ 401 |
 | `PUT /doctosMul/updateProfile` | token.id | doc.`IdLogin == token.id` | `IdLogin` (body) | ✅ 401 |
-| `DELETE /doctosMul/:Id` | token.id | doc.`IdLogin == token.id` | `:Id` (path) | ✅ 401 |
+| `DELETE /doctosMul/:Id` | token.id | ownership validado antes de borrar | `:Id` (path) | ✅ 401 / 403 ajeno / 404 |
 | `PUT /TokenDispositivo/:Matricula` | token.matricula | matrícula del token, no del path | `:Matricula` (path) | ✅ 401 |
 
 Ownership de `PUT /permission/:Id` vía `requireOwnership` + `findPermissionOwnerId`
 (403 `FORBIDDEN_OWNERSHIP` si no es dueño, 404 `PERMISSION_NOT_FOUND` si no existe).
 `verifyToken` corre ANTES de multer en las subidas (no procesa archivo sin auth).
 Nota: un 403 en `/TokenDispositivo` no bloquea login (el cliente lo traga).
+
+**DELETE /doctosMul — ownership + hallazgo de esquema.** `IdDocumento` es un **TIPO**
+de documento (compartido entre usuarios; ej. IdDocumento=6 en 6 cuentas); el id único
+por documento es **`IdDoctos`** (PK). Por eso:
+- Si el body trae **`IdDoctos`** (recomendado): se valida el documento único →
+  404 `DOC_NOT_FOUND` si no existe, 403 `FORBIDDEN_OWNERSHIP` si `IdLogin != token.id`,
+  si no borra. Esto habilita el 403 "ajeno" real que pidió Frontend.
+- Si el body trae solo **`IdDocumento`** (legacy, tipo): se opera sobre el doc propio
+  del token (no puede alcanzar ajenos), por lo que "no es tuyo" = 404 (no hay 403).
+- **Acción Frontend:** para ownership real (403/404 por documento), enviar `IdDoctos`.
+
+Tests de integración (no destructivos, tokens generados en el test): permiso ajeno→403,
+permiso inexistente→404, `IdDoctos` ajeno→403, `IdDoctos` inexistente→404
+(`tests/ownership.integration.test.js`, con guard de DB).
 
 ---
 

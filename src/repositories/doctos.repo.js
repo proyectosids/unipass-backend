@@ -109,6 +109,26 @@ export const deleteDocument = (idLogin, idDocumento) =>
         return result.rowsAffected[0] > 0;
     });
 
+// Documento por su id UNICO (IdDoctos). Devuelve dueño (IdLogin) + Archivo, para
+// validar ownership antes de borrar (403 ajeno / 404 inexistente). null si no existe.
+export const findDocumentById = (idDoctos) =>
+    withConnection(async (pool) => {
+        const result = await pool
+            .request()
+            .input('IdDoctos', sql.Int, idDoctos)
+            .query('SELECT IdDoctos, IdLogin, Archivo FROM Doctos WHERE IdDoctos = @IdDoctos');
+        return result.recordset[0] || null;
+    });
+
+export const deleteDocumentById = (idDoctos) =>
+    withConnection(async (pool) => {
+        const result = await pool
+            .request()
+            .input('IdDoctos', sql.Int, idDoctos)
+            .query('DELETE FROM Doctos WHERE IdDoctos = @IdDoctos');
+        return result.rowsAffected[0] > 0;
+    });
+
 export const findExpedientesByDormitorio = (idDormitorio) =>
     withConnection(async (pool) => {
         const result = await pool
