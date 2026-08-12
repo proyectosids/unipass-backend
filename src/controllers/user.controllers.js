@@ -307,7 +307,8 @@ export const documentComplet = async (req, res) => {
 
 export const registerTokenFCM = async (req, res) => {
     try {
-        const updated = await updateTokenFCM(req.params.Matricula, req.body.TokenCFM);
+        // Task 7.2: la matrícula viene del token, no del path (:Matricula se ignora).
+        const updated = await updateTokenFCM(req.user.matricula, req.body.TokenCFM);
         if (!updated) {
             return res.status(404).json({ message: 'Dato no encontrado' });
         }

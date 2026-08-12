@@ -157,7 +157,7 @@ Body: `{ "refreshToken": "..." }` → **204** (idempotente). 400 `MISSING_REFRES
 | `PUT /cambiarCargo/:Matricula` | — | Body `{ IdCargoDelegado }`. Asigna cargo delegado. |
 | `PUT /terminarCargo/:Matricula` | — | Limpia `IdCargoDelegado` y borra el registro de `Position` asociado. |
 | `GET /VerToken/:Matricula` | — | Tokens FCM: si la matrícula tiene delegado activo en `Position`, devuelve el/los del delegado; si no, el propio. `[{ TokenCFM }]`. |
-| `PUT /TokenDispositivo/:Matricula` | — | Body `{ TokenCFM }`. Registra token FCM del dispositivo. |
+| `PUT /TokenDispositivo/:Matricula` | ✅ | Body `{ TokenCFM }`. Registra token FCM. **Task 7.2**: matrícula del token (`:Matricula` ignorado). |
 | `PUT /Documentacion/:Matricula` | — | Body `{ StatusDoc }` (int). Marca expediente completo/incompleto. |
 
 ### Registro — `POST /register` (`resgister.routes.js`)
@@ -238,9 +238,9 @@ Body: `{ FechaCheck, Estatus, Observaciones }` (`Estatus: 'Confirmada'` para con
 | Método y ruta | Descripción |
 |---|---|
 | `GET /permission/:Id?page=1&limit=10` | Permisos del alumno (`:Id` = IdUser), **paginado**: `{ data, pagination: { totalItems, totalPages, currentPage, limit } }`. Campos explícitos seguros. |
-| `POST /permission` | Crea permiso. Body `{ IdUser, FechaSolicitada, FechaSalida, FechaRegreso, StatusPermission, Motivo, IdTipoSalida, MedioSalida? }`. ⚠️ Resta **6 h** a las tres fechas (ajuste zona horaria hardcodeado) y guarda en UTC. 400 si `IdUser` no existe. Emite `new_permission_request`. |
-| `PUT /permission/:Id` | **Cancela** el permiso. Emite `permission_cancelled` a los empleados de su cadena. |
-| `DELETE /permission/:Id` | Elimina el permiso. |
+| `POST /permission` 🔒 | **Task 7.2**: `IdUser` = token (body ignorado). Crea permiso. Body `{ FechaSolicitada, FechaSalida, FechaRegreso, StatusPermission, Motivo, IdTipoSalida, MedioSalida? }`. ⚠️ Resta **6 h** a las tres fechas y guarda en UTC. Emite `new_permission_request`. 401 sin token. |
+| `PUT /permission/:Id` 🔒 | **Cancela** (`StatusPermission='Cancelado'`). **Task 7.2**: solo el dueño (`Permission.IdUser == token.id`), si no **403** `FORBIDDEN_OWNERSHIP`; 404 `PERMISSION_NOT_FOUND`. Emite `permission_cancelled`. |
+| `DELETE /permission/:Id` 🔒 | **Task 7 (§8)**: cerrado a capability `ADMIN` (Frontend no lo usa). Elimina el permiso. 401/403. |
 | `PUT /permissionValorado/:Id` | Resolución final. Body `{ StatusPermission, Observaciones }`. Emite `permission_finalized` al alumno. |
 | `GET /PermissionsPreceptor/:Id` | Permisos pendientes de autorizar por el preceptor (`:Id` = IdEmpleado). Sin datos → `200 null`. |
 | `GET /permissionsEmployee/:Id` | Permisos pendientes de autorizar por un empleado/jefe. Sin datos → `200 []`. Campos explícitos seguros (sin datos sensibles de `LoginUniPass`). |
@@ -310,9 +310,9 @@ Subida con Multer a `public/uploads/` (nombre = timestamp + extensión). Tipos p
 
 | Método y ruta | Descripción |
 |---|---|
-| `POST /doctosMul` | `multipart/form-data`: campo archivo **`Archivo`** + `IdDocumento`, `IdLogin`. Crea documento con `StatusDoctos: 'Adjunto'`. Si la BD falla, borra el archivo subido (rollback). |
-| `PUT /doctosMul/updateProfile` | Igual que el anterior pero **reemplaza** el archivo existente (borra el viejo del disco). |
-| `DELETE /doctosMul/:Id` | `:Id` = IdLogin. Body `{ IdDocumento }`. Borra registro y archivo físico. |
+| `POST /doctosMul` 🔒 | **Task 7.2**: `IdLogin` = token (body ignorado); `verifyToken` antes de multer. `multipart/form-data`: campo **`Archivo`** + `IdDocumento`. Crea documento `StatusDoctos: 'Adjunto'`. Rollback de archivo si la BD falla. 401 sin token. |
+| `PUT /doctosMul/updateProfile` 🔒 | Igual pero **reemplaza** el archivo. **Task 7.2**: opera sobre el doc del token (`IdLogin` del body ignorado). |
+| `DELETE /doctosMul/:Id` 🔒 | Borra doc **propio**. **Task 7.2**: `IdLogin` = token (`:Id` ignorado), body `{ IdDocumento }`. 401 sin token. |
 | `GET /doctosProfile/:id?IdDocumento=` | Un documento específico del usuario (p. ej. foto de perfil). |
 | `GET /doctos/:Id` | Todos los documentos del usuario `:Id` (IdLogin). 404 si no hay. |
 | `GET /getExpediente/:IdDormi` | Expedientes de los alumnos de un dormitorio (revisión del preceptor). |

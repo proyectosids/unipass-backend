@@ -60,7 +60,10 @@ export const getPermission = async (req, res) => {
 
 export const createPermission = async (req, res) => {
     try {
-        const exists = await userExistsById(req.body.IdUser);
+        // Task 7.2: la identidad del alumno viene del token, NO del body. Flutter puede
+        // seguir enviando IdUser por compatibilidad, pero se ignora como fuente de identidad.
+        const idUser = req.user.id;
+        const exists = await userExistsById(idUser);
         if (!exists) {
             return res.status(400).json({ error: 'El IdUsuario no existe en dbo.Users' });
         }
@@ -85,13 +88,13 @@ export const createPermission = async (req, res) => {
             fechaSalida: fechaSalidaUTC,
             fechaRegreso: fechaRegresoUTC,
             motivo: req.body.Motivo,
-            idUser: req.body.IdUser,
+            idUser,
             idTipoSalida: req.body.IdTipoSalida
         });
 
         let alumnoInfo = null;
         try {
-            alumnoInfo = await findAlumnoBasicByLogin(req.body.IdUser);
+            alumnoInfo = await findAlumnoBasicByLogin(idUser);
         } catch (queryError) {
             console.error('Error obteniendo info alumno para socket:', queryError);
         }
@@ -104,7 +107,7 @@ export const createPermission = async (req, res) => {
             FechaRegreso: fechaRegresoUTC,
             Motivo: req.body.Motivo,
             MedioSalida: req.body.MedioSalida,
-            IdUser: req.body.IdUser,
+            IdUser: idUser,
             IdTipoSalida: req.body.IdTipoSalida
         });
 

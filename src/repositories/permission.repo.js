@@ -67,6 +67,15 @@ export const findPermissionById = (id) =>
         return result.recordset[0] || null;
     });
 
+// Dueño (IdUser) de un permiso, para validar ownership contra token.id. null si no existe.
+export const findPermissionOwnerId = (id) =>
+    withConnection(async (pool) => {
+        const result = await pool.request()
+            .input('Id', sql.Int, id)
+            .query('SELECT IdUser FROM Permission WHERE IdPermission = @Id');
+        return result.recordset[0]?.IdUser ?? null;
+    });
+
 export const userExistsById = (idUser) =>
     withConnection(async (pool) => {
         const result = await pool.request()

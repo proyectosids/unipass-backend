@@ -55,10 +55,12 @@ export const saveDocument = async (req, res) => {
         }
         filePath = '/uploads/' + req.file.filename;
 
+        // Task 7.2: el dueño del documento es el usuario del token (IdLogin del body ignorado).
+        const idLogin = req.user.id;
         const newId = await createDocument({
             idDocumento: req.body.IdDocumento,
             archivo: filePath,
-            idLogin: req.body.IdLogin
+            idLogin
         });
 
         if (newId === null) {
@@ -70,7 +72,7 @@ export const saveDocument = async (req, res) => {
             IdDocumento: req.body.IdDocumento,
             Archivo: filePath,
             StatusDoctos: 'Adjunto',
-            IdLogin: req.body.IdLogin
+            IdLogin: idLogin
         });
     } catch (error) {
         console.error('Error en el servidor:', error);
@@ -92,11 +94,13 @@ export const uploadProfile = async (req, res) => {
         }
         newFilePath = '/uploads/' + req.file.filename;
 
-        const oldDoc = await findDocumentByLoginAndType(req.body.IdLogin, req.body.IdDocumento);
+        // Task 7.2: se opera sobre el documento del usuario del token (IdLogin del body ignorado).
+        const idLogin = req.user.id;
+        const oldDoc = await findDocumentByLoginAndType(idLogin, req.body.IdDocumento);
         const oldFilePath = oldDoc ? oldDoc.Archivo : null;
 
         const updated = await updateDocumentArchivo(
-            req.body.IdLogin,
+            idLogin,
             req.body.IdDocumento,
             newFilePath
         );
@@ -105,7 +109,7 @@ export const uploadProfile = async (req, res) => {
         }
         updateOk = true;
 
-        const updatedRecord = await findDocumentByLoginAndType(req.body.IdLogin, req.body.IdDocumento);
+        const updatedRecord = await findDocumentByLoginAndType(idLogin, req.body.IdDocumento);
         res.json(updatedRecord);
 
         if (oldFilePath && oldFilePath !== newFilePath) {
@@ -126,13 +130,15 @@ export const uploadProfile = async (req, res) => {
 
 export const deleteFileDoc = async (req, res) => {
     try {
-        const fileRecord = await findDocumentByLoginAndType(req.params.Id, req.body.IdDocumento);
+        // Task 7.2: solo borra documentos propios (token.id); :Id del path se ignora.
+        const idLogin = req.user.id;
+        const fileRecord = await findDocumentByLoginAndType(idLogin, req.body.IdDocumento);
         if (!fileRecord) {
             return res.status(404).json({ message: 'Dato no encontrado' });
         }
         const archivoPath = fileRecord.Archivo;
 
-        const deleted = await deleteDocument(req.params.Id, req.body.IdDocumento);
+        const deleted = await deleteDocument(idLogin, req.body.IdDocumento);
         if (!deleted) {
             return res.status(404).json({ message: 'Dato no encontrado' });
         }

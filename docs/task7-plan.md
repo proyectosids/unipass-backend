@@ -10,7 +10,18 @@ seguir mandando `IdUser`, `IdLogin`, `IdEmpleado`, `Matricula`, `MatriculaPrecep
 
 ---
 
-## Task 7.1 — Password Security (PRIORIDAD CRÍTICA)
+## Task 7.1 — Password Security (PRIORIDAD CRÍTICA) — servicio OTP externo confirmado
+
+Frontend confirmó que **ya existe un servicio OTP externo** (`OTP_URL` =
+`https://api-otp.apps.isdapps.uk`) con endpoints de envío/verificación/reset. Propuesta:
+el backend **valida el OTP server-side llamando a ese servicio** (o toma el control de
+llamarlo) en vez de confiar en el cliente, y así se depreca `PUT /password/:Correo` sin
+montar mailer. **Pendiente de la directiva:** confirmar quién administra el servicio OTP
+y si el backend puede llamar su `verifyOTP`. Endpoints del servicio (según Frontend):
+`POST /api/v1/otp_app`, `POST /api/v1/forgot_password_app/`,
+`POST /api/v1/email_verification/verifyOTP`, `POST /api/v1/forgot_password_app/reset`.
+
+## Task 7.1 — Password Security (contrato backend)
 
 **Vulnerabilidad viva:** `PUT /password/:Correo` está abierto y cambia la contraseña de
 cualquier cuenta solo con el correo; el OTP hoy se valida **solo en Flutter** (backend no
@@ -58,21 +69,24 @@ ResetExpiraEn, UsadoEn, FechaCreacion`. (OTP y reset token siempre hasheados, co
 
 ---
 
-## Task 7.2 — Endpoints self / bajo riesgo (contratos)
+## Task 7.2 — Endpoints self / bajo riesgo — ✅ ACTIVADO (2026-08-12)
 
-Regla: `verifyToken` + ownership (`req.user.id` = dueño). Body identifiers ignorados.
-**No se activan en vivo hasta que Frontend confirme Bearer por endpoint (§29).**
+Frontend confirmó Bearer en los 6 y dio luz verde (§29). Regla: `verifyToken` + identidad
+del token. Body identifiers aceptados por compatibilidad pero **ignorados** como identidad.
 
-| Endpoint | Identidad | Ownership / regla | Ignora del body | Respuestas |
+| Endpoint | Identidad | Ownership / regla | Ignora | Verificado |
 |---|---|---|---|---|
-| `POST /permission` | token.id | crea con `IdUser = token.id` | `IdUser` | 201 / 401 |
-| `PUT /permission/:Id` (cancelar) | token.id | `Permission.IdUser == token.id`; set `Cancelado` (no borra) | — | 200 / 401 / 403 ajeno / 404 |
-| `POST /doctosMul` | token.id | crea con `IdLogin = token.id` | `IdLogin` | 200 / 401 |
-| `PUT /doctosMul/updateProfile` | token.id | doc.`IdLogin == token.id` | `IdLogin` | 200 / 401 / 403 / 404 |
-| `DELETE /doctosMul/:Id` | token.id | doc.`IdLogin == token.id` (alumno) | — | 200 / 401 / 403 / 404 |
-| `PUT /TokenDispositivo/:Matricula` | token | matrícula del token, no del path | `:Matricula` | 200 / 401 |
+| `POST /permission` | token.id | crea con `IdUser = token.id` | `IdUser` (body) | ✅ guardó IdUser del token |
+| `PUT /permission/:Id` (cancelar) | token.id | `Permission.IdUser == token.id`; set `Cancelado` (no borra) | — | ✅ 401/403/200/404 |
+| `POST /doctosMul` | token.id | crea con `IdLogin = token.id` | `IdLogin` (body) | ✅ 401 |
+| `PUT /doctosMul/updateProfile` | token.id | doc.`IdLogin == token.id` | `IdLogin` (body) | ✅ 401 |
+| `DELETE /doctosMul/:Id` | token.id | doc.`IdLogin == token.id` | `:Id` (path) | ✅ 401 |
+| `PUT /TokenDispositivo/:Matricula` | token.matricula | matrícula del token, no del path | `:Matricula` (path) | ✅ 401 |
 
-Infra lista: `src/Middleware/requireOwnership.js` (genérico, aún sin cablear).
+Ownership de `PUT /permission/:Id` vía `requireOwnership` + `findPermissionOwnerId`
+(403 `FORBIDDEN_OWNERSHIP` si no es dueño, 404 `PERMISSION_NOT_FOUND` si no existe).
+`verifyToken` corre ANTES de multer en las subidas (no procesa archivo sin auth).
+Nota: un 403 en `/TokenDispositivo` no bloquea login (el cliente lo traga).
 
 ---
 
@@ -95,6 +109,13 @@ Orquestación hoy en Flutter (`POST /permission`→`POST /authorize`; luego
 `PUT /autorizarPermission`→`PUT /permissionValorado`→`POST /checks`). Objetivo: moverla a
 backend con transacciones e idempotencia. `POST /authorize` hoy lo ejecuta el **ALUMNO** →
 **NO** gatearlo con rol PRECEPTOR/ADMIN sobre el diseño actual (rompería la creación).
+
+**Ticket ligado (Frontend):** bug de Salida Pueblo (tipo 1) — el cliente arma la cadena con
+`idJefe!`/`idDepto!` desde prefs de datos de trabajo/empleado (null para alumnos) → crashea
+tras crear el permiso y lo deja huérfano (Permission sin Authorize). El backend debe
+determinar la cadena de Pueblo desde los datos del alumno en BD (parte del flujo
+transaccional `Permission + Authorize`). Detalle en el repo de Frontend:
+`docs/backend/ticket-tipo1-pueblo-cadena-autorizacion.md`.
 
 ## Task 7.5 — Administración
 `POST /createPosition`, `PUT /activarCargo`, `PUT /cambiarCargo`, `PUT /terminarCargo`,

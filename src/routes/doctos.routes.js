@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { verifyToken } from "../Middleware/verifityToken.js";
 import { deleteFileDoc, getDocumentsByUser, saveDocument, getProfile, uploadProfile, getExpedientesAlumnos, getArchivosAlumno, aprobarDocumento, rejectDocument } from "../controllers/doctos.controller.js";
 import { Subirimagen } from "../Middleware/storage.js";
 import multer from "multer";
@@ -12,11 +13,13 @@ router.get("/doctosProfile/:id", getProfile);
 router.get("/doctos/:Id", getDocumentsByUser);
 
 // Subida y reemplazo (multipart, campo 'Archivo'; jpg/jpeg/png/pdf, max 50 MB)
-router.post("/doctosMul", Subirimagen.single('Archivo'), saveDocument)
+// Task 7.2: verifyToken ANTES de multer (no procesar archivo sin auth); IdLogin del body ignorado.
+router.post("/doctosMul", verifyToken, Subirimagen.single('Archivo'), saveDocument)
 
-router.put("/doctosMul/updateProfile", Subirimagen.single('Archivo'), uploadProfile)
+router.put("/doctosMul/updateProfile", verifyToken, Subirimagen.single('Archivo'), uploadProfile)
 
-router.delete("/doctosMul/:Id", deleteFileDoc);
+// Borra doc propio (:Id del path ignorado, se usa token.id)
+router.delete("/doctosMul/:Id", verifyToken, deleteFileDoc);
 
 // Revision del preceptor (:IdDormi/:Dormitorio = 5 -> vista global)
 router.get("/getExpediente/:IdDormi", getExpedientesAlumnos)

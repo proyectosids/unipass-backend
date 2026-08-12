@@ -38,7 +38,8 @@ router.put("/terminarCargo/:Matricula", endCargo);
 // Token FCM del dispositivo (VerToken resuelve la suplencia activa)
 router.get("/VerToken/:Matricula", SearchTokenFCM);
 
-router.put("/TokenDispositivo/:Matricula", registerTokenFCM);
+// Task 7.2: identidad del token (matrícula del path ignorada). Un 403 aquí no debe bloquear login.
+router.put("/TokenDispositivo/:Matricula", verifyToken, registerTokenFCM);
 
 // Marca el expediente documental como completo/incompleto
 router.put('/Documentacion/:Matricula', documentComplet);

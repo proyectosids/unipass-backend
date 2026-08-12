@@ -19,3 +19,20 @@ describe('Endpoints /admin/* siguen requiriendo token -> 401', () => {
         });
     }
 });
+
+describe('Task 7.2 self endpoints: sin token -> 401', () => {
+    const casos = [
+        ['put', '/TokenDispositivo/123'],
+        ['delete', '/doctosMul/1'],
+        ['put', '/permission/1'],
+        ['post', '/doctosMul'],
+        ['put', '/doctosMul/updateProfile'],
+        ['post', '/permission'],
+    ];
+    for (const [metodo, path] of casos) {
+        it(`${metodo.toUpperCase()} ${path} sin token -> 401`, async () => {
+            const res = await request(app)[metodo](path).send({});
+            expect(res.status).toBe(401);
+        });
+    }
+});

@@ -1,6 +1,8 @@
 import { Router } from "express";
 import { verifyToken } from "../Middleware/verifityToken.js";
 import { requireCapability } from "../Middleware/requireCapability.js";
+import { requireOwnership } from "../Middleware/requireOwnership.js";
+import { findPermissionOwnerId } from "../repositories/permission.repo.js";
 import { autorizarPermiso, cancelPermission, createPermission, DashboardDocumentos, DashboardPermission, deletePermission, filtrarPermisos, getPermissionForAutorizacion, getPermissionForAutorizacionPrece, getPermissionsByUser, topPermissionEmployee, topPermissionPrece, topPermissionStudent } from "../controllers/permission.controller.js";
 
 const router = Router();
@@ -13,14 +15,15 @@ router.get("/PermissionsPreceptor/:Id", getPermissionForAutorizacionPrece);
 
 router.get("/permissionsEmployee/:Id", getPermissionForAutorizacion);
 
-// Ciclo de vida del permiso
-router.post("/permission", createPermission);
+// Ciclo de vida del permiso — Task 7.2: identidad del token (IdUser del body ignorado).
+router.post("/permission", verifyToken, createPermission);
 
 // Task 7 (§8): Frontend confirmo que NO consume este endpoint. Se cierra a ADMIN
 // (operacion administrativa interna); las cancelaciones normales usan PUT /permission/:Id.
 router.delete("/permission/:Id", verifyToken, requireCapability(['ADMIN']), deletePermission);
 
-router.put("/permission/:Id", cancelPermission); // cancela (StatusPermission = 'Cancelado')
+// Cancela (StatusPermission='Cancelado'); Task 7.2: solo el dueño (Permission.IdUser == token.id)
+router.put("/permission/:Id", verifyToken, requireOwnership((req) => findPermissionOwnerId(req.params.Id), { notFoundCode: 'PERMISSION_NOT_FOUND' }), cancelPermission);
 
 router.put("/permissionValorado/:Id", autorizarPermiso); // resolucion final
 
