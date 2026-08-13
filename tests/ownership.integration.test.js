@@ -56,4 +56,18 @@ d('Task 7.2 ownership (integración)', () => {
         expect(res.status).toBe(404);
         expect(res.body.code).toBe('DOC_NOT_FOUND');
     });
+
+    // Task 7.1: no destructivo (falla en la verificación de 'actual', antes de actualizar).
+    it('PUT /me/password con actual incorrecta -> 403 PASSWORD_MISMATCH', async () => {
+        const res = await request(app).put('/me/password').set('Authorization', `Bearer ${tokenA}`)
+            .send({ actual: 'contraseña-que-no-es', nueva: 'nuevaSegura123' });
+        expect(res.status).toBe(403);
+        expect(res.body.code).toBe('PASSWORD_MISMATCH');
+    });
+
+    it('PUT /me/password sin campos -> 400 MISSING_FIELDS', async () => {
+        const res = await request(app).put('/me/password').set('Authorization', `Bearer ${tokenA}`).send({});
+        expect(res.status).toBe(400);
+        expect(res.body.code).toBe('MISSING_FIELDS');
+    });
 });

@@ -36,3 +36,10 @@ describe('Task 7.2 self endpoints: sin token -> 401', () => {
         });
     }
 });
+
+describe('Task 7.1 PUT /me/password: gating', () => {
+    it('sin token -> 401', async () => {
+        const res = await request(app).put('/me/password').send({ actual: 'x', nueva: 'yyyyyy' });
+        expect(res.status).toBe(401);
+    });
+});

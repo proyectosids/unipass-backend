@@ -15,6 +15,7 @@ import {
     findPersonaByNombreOApellidos,
     findTokenFCMByMatricula,
     updateUserPassword,
+    updateUserPasswordById,
     updateDocumentacion,
     updateTokenFCM,
     findIdCargoDelegadoByMatricula,
@@ -226,8 +227,47 @@ export const verifySessionToken = async (req, res) => {
 
 //==================================== FIN LOGIN ================================================
 
+// Task 7.1: cambio de contraseña del usuario AUTENTICADO. Identidad = token; NO usa el
+// correo como autorización. Requiere la contraseña actual (se verifica contra la BD).
+export const putMePassword = async (req, res) => {
+    try {
+        const { actual, nueva } = req.body || {};
+        if (!actual || !nueva) {
+            return res.status(400).json({ message: 'actual y nueva son obligatorias', code: 'MISSING_FIELDS' });
+        }
+        if (String(nueva).length < 6) {
+            return res.status(400).json({ message: 'La nueva contraseña debe tener al menos 6 caracteres', code: 'WEAK_PASSWORD' });
+        }
+
+        const user = await findUserById(req.user.id);
+        if (!user) {
+            return res.status(404).json({ message: 'Usuario no encontrado', code: 'USER_NOT_FOUND' });
+        }
+
+        const actualOk = await VerifyHashData(actual, user.Contraseña);
+        if (!actualOk) {
+            return res.status(403).json({ message: 'La contraseña actual no es correcta', code: 'PASSWORD_MISMATCH' });
+        }
+
+        const hashedPassword = await hashData(nueva);
+        const updated = await updateUserPasswordById(req.user.id, hashedPassword);
+        if (!updated) {
+            return res.status(500).json({ message: 'No se pudo actualizar la contraseña', code: 'SERVER_ERROR' });
+        }
+
+        return res.json({ message: 'Contraseña actualizada correctamente' });
+    } catch (error) {
+        console.error('Error en PUT /me/password:', error);
+        return res.status(500).json({ error: 'Error al actualizar la contraseña' });
+    }
+};
+
+// LEGADO (Task 7.1): cambio por correo, sin prueba de identidad/OTP server-side. Se
+// mantiene SOLO mientras el flujo de recuperación (7.1.B, servicio OTP) no esté vivo;
+// deprecar en cuanto exista el reset con reset token verificado en backend.
 export const putPassword = async (req, res) => {
     try {
+        console.warn(`[DEPRECATION][Task7.1] PUT /password/:Correo invocado (correo=${req.params.Correo}) — reemplazar por /me/password o el flujo de recuperación server-side`);
         const { Correo } = req.params;
         const { NewPassword } = req.body;
         const hashedPassword = await hashData(NewPassword);

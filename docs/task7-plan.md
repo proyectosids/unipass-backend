@@ -35,17 +35,24 @@ Sin esa decisión no se puede implementar la entrega del OTP.
 
 ### Contrato propuesto
 
-**A) Cambio autenticado (desde perfil):**
+**A) Cambio autenticado (desde perfil) — ✅ IMPLEMENTADO (2026-08-13):**
 ```
 PUT /me/password          Auth: ✅ Bearer
-Body: { "actual": "<contraseña actual>", "nueva": "<nueva>" }
-- Identidad = token. Verifica 'actual' contra hash en BD (bcrypt).
-- 200 { message } | 400 faltan campos / nueva débil | 401 sin token
-  | 403 'actual' incorrecta (code PASSWORD_MISMATCH)
-- NO usa Correo. Deprecar PUT /password/:Correo para este caso.
+Body: { "actual": "<contraseña actual>", "nueva": "<nueva, >=6>" }
+- Identidad = token (findUserById(req.user.id)). Verifica 'actual' contra hash (bcrypt).
+- 200 { message } | 400 MISSING_FIELDS / WEAK_PASSWORD | 401 sin token
+  | 403 PASSWORD_MISMATCH ('actual' incorrecta) | 404 USER_NOT_FOUND
+- NO usa Correo. Verificado: 401 / 403 PASSWORD_MISMATCH / 400 MISSING_FIELDS.
 ```
 
-**B) Recuperación (anónima, OTP server-side):**
+**B) Recuperación (anónima, OTP server-side) — ⏳ BLOQUEADO por 2 insumos:**
+Proveedor OTP confirmado (`https://api-otp.apps.isdapps.uk`, autorizado a consumir
+server-side). Falta para implementar: (1) el contrato exacto en **este** repo
+(`docs/backend/otp-service-contract.md` hoy solo está en el repo de Frontend — se
+necesitan payloads/headers/respuestas reales, no adivinar una API externa), y
+(2) **`OTP_URL` en el `.env`** del backend. `PUT /password/:Correo` queda VIVO (con log
+`[DEPRECATION][Task7.1]`) hasta que este flujo esté en producción, para no romper
+recuperación.
 ```
 POST /password/forgot     Auth: —   Body: { "correo" }
 - Genera OTP (6 dígitos), guarda HASH del OTP + expiración (~10 min) + intentos.

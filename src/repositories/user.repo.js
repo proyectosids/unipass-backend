@@ -132,6 +132,17 @@ export const findTokenFCMByMatricula = (matricula) =>
 
 // === LoginUniPass: escrituras ===
 
+// Task 7.1: cambio de contraseña del usuario AUTENTICADO (identidad = IdLogin del token).
+export const updateUserPasswordById = (idLogin, hashedPassword) =>
+    withConnection(async (pool) => {
+        const result = await pool
+            .request()
+            .input('Id', sql.Int, idLogin)
+            .input('Password', sql.VarChar, hashedPassword)
+            .query('UPDATE LoginUniPass SET Contraseña = @Password WHERE IdLogin = @Id');
+        return result.rowsAffected[0] > 0;
+    });
+
 export const updateUserPassword = (correo, hashedPassword) =>
     withConnection(async (pool) => {
         const result = await pool

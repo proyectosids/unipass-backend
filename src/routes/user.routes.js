@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { verifyToken } from '../Middleware/verifityToken.js';
-import { getUser, loginUser, putPassword, BuscarUserMatricula, getBuscarCheckers, buscarPersona, updateCargo, endCargo, registerTokenFCM, SearchTokenFCM, documentComplet, verifySessionToken, refreshTokenController, logoutUser } from "../controllers/user.controllers.js";
+import { getUser, loginUser, putPassword, putMePassword, BuscarUserMatricula, getBuscarCheckers, buscarPersona, updateCargo, endCargo, registerTokenFCM, SearchTokenFCM, documentComplet, verifySessionToken, refreshTokenController, logoutUser } from "../controllers/user.controllers.js";
 
 const router = Router();
 
@@ -21,7 +21,10 @@ router.get("/verifyToken", verifyToken, verifySessionToken);
 
 //==================================
 
-// Recuperacion/cambio de contraseña por correo
+// Task 7.1: cambio de contraseña del usuario autenticado (identidad del token).
+router.put("/me/password", verifyToken, putMePassword);
+
+// LEGADO: cambio por correo (sin OTP server-side). Se retira cuando 7.1.B esté vivo.
 router.put("/password/:Correo", putPassword);
 
 // LEGADO (modelo DEPARTAMENTO retirado): vivo solo durante la transicion a CheckerGrant
