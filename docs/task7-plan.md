@@ -35,7 +35,20 @@ Sin esa decisión no se puede implementar la entrega del OTP.
 
 ### Contrato propuesto
 
-**A) Cambio autenticado (desde perfil) — ✅ IMPLEMENTADO (2026-08-13):**
+**A) Cambio autenticado (desde perfil) — ✅ CLOSED / Flutter-certified (2026-08-17):**
+Smoke de Frontend OK (200 / 403 PASSWORD_MISMATCH / 401; sesión persiste). No más cambios
+salvo regresiones.
+
+### Política de contraseña actual (documentación obligatoria)
+**Política REAL en código (`WEAK_PASSWORD`): únicamente `longitud >= 6`.** No exige letra,
+número, mayúscula ni símbolo. (Por eso `abcdefg1` pasa — pero también `aaaaaa`.)
+
+> ⚠️ **Discrepancia con la inferencia de Frontend.** El smoke infirió "min 8 + letra +
+> número"; **el código NO valida eso** (solo `>= 6`). La política efectiva es más débil de
+> lo asumido. Por indicación (no endurecer sin decisión coordinada) **no se cambia aquí**;
+> queda registrada para sincronizar con las reglas UX de Flutter. Cualquier endurecimiento
+> (min 8, letra+número, símbolos, listas de comunes) es un cambio separado y coordinado.
+
 ```
 PUT /me/password          Auth: ✅ Bearer
 Body: { "actual": "<contraseña actual>", "nueva": "<nueva, >=6>" }
@@ -45,14 +58,31 @@ Body: { "actual": "<contraseña actual>", "nueva": "<nueva, >=6>" }
 - NO usa Correo. Verificado: 401 / 403 PASSWORD_MISMATCH / 400 MISSING_FIELDS.
 ```
 
-**B) Recuperación (anónima, OTP server-side) — ⏳ BLOQUEADO por 2 insumos:**
-Proveedor OTP confirmado (`https://api-otp.apps.isdapps.uk`, autorizado a consumir
-server-side). Falta para implementar: (1) el contrato exacto en **este** repo
-(`docs/backend/otp-service-contract.md` hoy solo está en el repo de Frontend — se
-necesitan payloads/headers/respuestas reales, no adivinar una API externa), y
-(2) **`OTP_URL` en el `.env`** del backend. `PUT /password/:Correo` queda VIVO (con log
-`[DEPRECATION][Task7.1]`) hasta que este flujo esté en producción, para no romper
-recuperación.
+**B) Recuperación (anónima, OTP server-side) — ⏳ BLOQUEADO (falta el contrato en el repo).**
+Proveedor autorizado (`https://api-otp.apps.isdapps.uk`). **Verificado 2026-08-17: el
+contrato `docs/backend/otp-service-contract.md` NO está en este repo** (`docs/backend/` no
+existe). No implemento las llamadas al proveedor sin sus payloads/headers/respuestas reales
+(no se adivina una API externa). `OTP_URL` añadido al `.env` local (gitignored).
+
+Endpoints a implementar cuando llegue el contrato: `POST /password/forgot` (proveedor
+envía OTP; respuesta genérica, no revela si la cuenta existe), `POST /password/verify-otp`
+(valida server-side contra el proveedor; si OK emite `resetToken` propio: cripto-seguro,
+expiración corta, un solo uso, ligado al usuario, hasheado si se persiste, invalidado al
+usarse), `POST /password/reset` (valida resetToken, aplica política, actualiza hash,
+invalida el token, y **revoca refresh tokens/sesiones previas**). El OK del proveedor NO
+permite cambiar la contraseña sin pasar por el `resetToken`.
+
+Persistencia propuesta (migración, sin aplicar): tabla `PasswordReset(Id, IdLogin, OtpRef?,
+ResetTokenHash, ExpiraEn, UsadoEn, FechaCreacion)`.
+
+**Insumos que necesito para desbloquear:** (1) copiar `otp-service-contract.md` a este repo
+(o pegar su contenido); (2) confirmar el secreto del proveedor (`OTP_PASSWORD`/API key) **solo
+por variable de entorno** — no versionar. La credencial OTP históricamente versionada en
+Flutter debe considerarse **comprometida** y rotarse en esta migración.
+
+`PUT /password/:Correo` queda VIVO (log `[DEPRECATION][Task7.1]`) hasta que 7.1.B esté
+desplegado + Frontend migre recuperación + smoke OK; luego se cierra y se marca Task 7.1
+completa.
 ```
 POST /password/forgot     Auth: —   Body: { "correo" }
 - Genera OTP (6 dígitos), guarda HASH del OTP + expiración (~10 min) + intentos.
@@ -151,6 +181,15 @@ debe poder borrar docs de su dormitorio, es una **extensión de scope** a decidi
 
 Pendiente de Frontend antes de gatear (§29): migrar estas llamadas a `AuthHttpClient` y
 confirmar Bearer; confirmar si `/statusRevision` sigue vivo; definir si el reviewer borra docs.
+
+## Task 7.4A — Creación transaccional Permission + Authorize (ANÁLISIS + contrato)
+Análisis de BD y contrato de `POST /permission` en **[[task7.4a-analysis]]**
+(`docs/task7.4a-analysis.md`). Hallazgo clave: el backend deriva tipo 2/3 y el 1er eslabón
+de tipo 1 (preceptor del dorm), pero el 2º eslabón de Pueblo (jefe/depto) **no está modelado**
+para alumnos → decisión de dominio pendiente. Permission 7048 = huérfana confirmada. Sin
+cambios productivos; no se toca 7.4B.
+
+## Task 7.3 — EN ESPERA (prioridad: 7.1.B → 7.4A → 7.3)
 
 ## Task 7.4 — Rediseño cadena de autorización (NO tocar hasta acordar contrato)
 Orquestación hoy en Flutter (`POST /permission`→`POST /authorize`; luego
