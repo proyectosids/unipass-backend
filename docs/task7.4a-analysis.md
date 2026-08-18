@@ -1,114 +1,195 @@
-# Task 7.4A — Análisis BD + contrato `POST /permission` (creación transaccional)
+# Task 7.4A — Análisis BD + API-ULV + contrato `POST /permission`
 
-Diseño/análisis. **Sin cambios productivos.** Objetivo: que el backend construya
-`Permission + Authorize` en una transacción, resolviendo la cadena desde los datos del
-alumno (token), y eliminar el bug de Pueblo (Flutter usa `idJefe/idDepto` nulos → crash →
-Permission huérfana, p. ej. **7048**).
+Diseño/análisis. **Sin cambios productivos** (7.4A/7.4B intactos). Cierra la regla de
+Pueblo (Tipo 1) usando **API-ULV** como fuente institucional. Verificado en vivo contra
+`https://ulv-api.apps.isdapps.uk` (2026-08-18) y contra la BD UniPass.
 
-## 1. Datos reales verificados (2026-08-17)
-
-**Identidad y ámbito del alumno (todo derivable del token + BD):**
-- Alumno = `token.id` → `LoginUniPass` por `IdLogin`.
-- Dormitorio = `LoginUniPass.Dormitorio`.
-- **Preceptor del dormitorio** = `LoginUniPass` con `TipoUser='PRECEPTOR'`, `Dormitorio=<dorm>`,
-  `StatusActividad=1`. Su `Matricula` (numérica) = el `IdEmpleado` que usa `Authorize`.
-  (repo existente `findPreceptorMatriculaByDormitorio`). Mapa real: dorm1→404, dorm2→89,
-  dorm3→273, dorm4→41.
-- **Coordinador** = `ADMINISTRATIVO` activo de Coordinación (dorm 5); hoy `264` (Teresa),
-  resuelto por el híbrido de `/autorizadorSalida` (override en `Configuracion` o por rol).
-  Ver [[autorizador-salidas-switch]].
-
-**Lo que NO existe en el esquema backend (causa raíz del bug):**
-- `LoginUniPass` **no** tiene campos de trabajo/área/jefe/departamento (cols:
-  IdLogin, Matricula, Contraseña, Correo, Nombre, Apellidos, TipoUser, Sexo,
-  FechaNacimiento, Celular, StatusActividad, Dormitorio, IdCargoDelegado, TokenCFM, Documentacion).
-- **No hay ninguna tabla** de trabajo/área/departamento. `Position` es **suplencias**
-  entre empleados (IdCargo, MatriculaEncargado, ClassUser, Asignado, Activo), no cargos del alumno.
-- ⇒ Para un ALUMNO, `idJefe`/`idDepto` **no son derivables**. Flutter los toma de prefs de
-  datos de empleado (null en alumnos) → crash. **El backend no puede inventar esa cadena.**
-
-## 2. Cadenas reales por tipo (histórico de `Authorize`)
-
-| Tipo | Descripción | Cadena observada | Regla derivable |
-|---|---|---|---|
-| 2 | ESPECIAL | 1 eslabón: `264`(ADMIN,d5) o `41`(PRECEPTOR,d4) | Autorizador único vía switch (`/autorizadorSalida`): coordinador o preceptor del dorm |
-| 3 | A CASA | 1 eslabón: `264`(ADMIN,d5) | Igual que tipo 2 |
-| 1 | PUEBLO | 6036: `41`(PRECEPTOR,d4)→ `89`(PRECEPTOR,d2); 7044: `41`(PRECEPTOR,d4) | **1er eslabón = preceptor del dorm del alumno** (confirmado). **2º eslabón = ambiguo** (jefe/depto), NO derivable del backend |
-
-Ejemplos: alumnos de 6036/7044/7048 son dorm 4 → 1er eslabón `41` (preceptor dorm 4) ✓.
-
-## 3. 🚩 Pregunta abierta (necesita decisión de dominio Frontend/negocio)
-
-Para **Tipo 1 (Pueblo)** el backend puede resolver el **preceptor del dormitorio** (1er
-eslabón), pero **NO** puede determinar el 2º eslabón ("jefe de trabajo"/"departamento")
-porque no existe ese modelo de datos para alumnos. Opciones a decidir:
-
-- **(A)** Pueblo es en realidad de **un solo eslabón** (preceptor del dorm) y `idJefe/idDepto`
-  es legado a eliminar. (El 2º eslabón de 6036 sería un caso histórico manual.)
-- **(B)** Pueblo requiere un 2º autorizador (jefe/depto) que hoy **no está modelado** →
-  hay que crear el modelo (tabla de asignación alumno→trabajo/jefe) antes de automatizar.
-
-Sin esta decisión, 7.4A puede cerrarse para **tipo 2 y 3** (totalmente derivables) y para el
-**1er eslabón de tipo 1**, dejando el 2º eslabón de Pueblo pendiente del modelo de datos.
-
-## 4. Contrato propuesto `POST /permission` (transaccional)
-
-### Request (lo que Flutter envía)
-```json
-{ "FechaSolicitada": "...", "FechaSalida": "...", "FechaRegreso": "...",
-  "Motivo": "...", "IdTipoSalida": 1|2|3, "MedioSalida": "opcional" }
+## 0. Regla de negocio aprobada — Tipo 1 (Pueblo)
 ```
-Auth: ✅ Bearer.
+Alumno → Preceptor → Jefe de trabajo
+Excepción: si preceptorMatricula == jefeMatricula → UN solo eslabón (dedupe).
+```
+Comparación por **matrícula institucional** (no nombre/rol/IdLogin).
 
-### Identidad (solo del token)
-`IdUser = token.id`. Dormitorio, preceptor, coordinador → derivados en BD.
+## 1. Fuente de cada dato — API-ULV
 
-### Campos NO confiables (aceptados por compat, IGNORADOS como autoridad)
-`IdUser`, `IdEmpleado`, `idJefe`, `idDepto`, `NoDepto`. (Ya se ignora `IdUser` desde 7.2.)
+Base URL única (env `ULV_API_URL`): `https://ulv-api.apps.isdapps.uk` (sirve todas las
+rutas `/api/datos/*`; el Postman lista hosts internos `172.16.30.10:3002` / `ulvdb.isdapps.uk`
+que son alternos — **no hardcodear hosts**). "Jefe de Vigilancia" queda FUERA DE ALCANCE.
 
-### Resolución de cadena (backend)
-- **Tipo 2 / 3**: 1 autorizador = resultado del híbrido `/autorizadorSalida`
-  (coordinador si `AUTORIZADOR_SALIDAS='COORDINADOR'`, si no preceptor del dorm).
-- **Tipo 1**: `[ preceptor del dorm ]` (+ 2º eslabón **según decisión §3**).
+| Dato requerido | Endpoint API-ULV | Parámetro | Campo recibido | Mapping UniPass |
+|---|---|---|---|---|
+| Datos del alumno + trabajo | `GET /api/datos/:matricula` | `:matricula` = `LoginUniPass.Matricula` (del token) | `Data.work[0]."ID DEPTO"`, `"ID JEFE"` (cross-check), `Data.type` | matrícula del alumno = `LoginUniPass[token.id].Matricula` |
+| Preceptor del dormitorio | `GET /api/datos/prece/:id` | `:id` = **`Bedroom.Identificador`** (NO `IdDormitorio`) | `"ID JEFE"` = matrícula del preceptor | `LoginUniPass.Dormitorio → Bedroom.IdBedroom → Bedroom.Identificador` |
+| Jefe de depto (vigente) | `GET /api/datos/JefeDepto/:IdDepto` | `:IdDepto` = `work[0]."ID DEPTO"` | `EmpMatricula` = matrícula del jefe | — |
+| Validar que X es jefe depto | `GET /api/datos/getjefe/:IdEmpleado` | `:IdEmpleado` = matrícula | `EmpMatricula` o `null` | cross-check opcional |
+| Coordinador del alumno | `GET /api/datos/coordinador/:Matricula` | `:Matricula` = matrícula del alumno | `empMatricula`, `IdDepartamento` | — |
 
-### Errores (códigos internos controlados)
-| Situación | HTTP | code |
+Conversión **matrícula institucional → usuario UniPass**: `LoginUniPass.Matricula = <matricula> AND StatusActividad=1`
+→ `IdLogin` (= `IdEmpleado` en `Authorize`). Si no existe cuenta → `AUTHORIZER_NOT_REGISTERED`.
+
+## 2. Resolución exacta del PRECEPTOR (entregable §4)
+`:id` de `prece/:id` **NO** es `LoginUniPass.Dormitorio` directo. **Requiere conversión**:
+```
+LoginUniPass.Dormitorio (1..5) == Bedroom.IdBedroom → Bedroom.Identificador (315/316/317/318/351)
+GET /api/datos/prece/<Identificador> → "ID JEFE" = matrícula del preceptor
+```
+Verificado en vivo: alumno dorm 4 → `Bedroom.Identificador=318` → `prece/318` →
+`{"ID DEPTO":318,"DEPARTAMENTO":"H.V.N.U","ID JEFE":41,...}` → preceptor matrícula **41**
+(Melytzin). Coincide con el mapeo local (`LoginUniPass PRECEPTOR` por `Dormitorio`), que
+sirve de cross-check/fallback. Mapa: dorm1→Id315→404, dorm2→Id316→89, dorm3→Id317→273,
+dorm4→Id318→41.
+
+## 3. Resolución exacta del JEFE DE TRABAJO (entregables §4/§5)
+```
+matrícula alumno → GET /api/datos/:matricula → work[0]."ID DEPTO"
+                → GET /api/datos/JefeDepto/<ID DEPTO> → EmpMatricula = jefeMatricula (VIGENTE)
+```
+**Cross-check `work.ID JEFE` vs `JefeDepto.EmpMatricula` (entregable §5): NO siempre
+coinciden.** Verificado: para depto 302 el ejemplo Postman traía `work.ID JEFE=2`, pero en
+vivo `JefeDepto/302.EmpMatricula=213`. **Decisión: el jefe vigente es
+`JefeDepto.EmpMatricula`** (refleja el estado actual); `work.ID JEFE` es un snapshot en el
+registro del alumno que puede estar desactualizado. **Regla:** usar `JefeDepto.EmpMatricula`;
+si difiere de `work.ID JEFE`, **loguear la discrepancia** (no elegir en silencio) y continuar
+con `JefeDepto`. 🚩 A confirmar por negocio si en algún caso `work.ID JEFE` debe prevalecer.
+
+**🚩 Alumno sin trabajo (`work: []`) — real y frecuente.** Verificado: el alumno 221068
+tiene `work: []` en vivo. Sin `work` no hay `ID DEPTO` → **no hay jefe derivable**. Pregunta
+de negocio a cerrar: ¿Pueblo con alumno sin `work` es (a) **error controlado**
+(`STUDENT_WORK_NOT_FOUND`, no se crea Permission) o (b) **cadena de un solo eslabón**
+(solo preceptor)? La regla §0 asume que siempre hay jefe → por defecto se propone (a) error,
+pero requiere confirmación.
+
+## 4. Resolución del COORDINADOR (entregable §6)
+```
+GET /api/datos/coordinador/<matricula alumno> → { empMatricula, IdDepartamento }
+```
+Verificado: `coordinador/221068 → {empMatricula:"366", IdDepartamento:214}` → coordinador
+matrícula **366** (Iván, EMPLEADO, IdLogin 9 en UniPass). **🚩 Discrepancia con el diseño
+actual de tipo 2/3:** hoy el switch `AUTORIZADOR_SALIDAS='COORDINADOR'` usa un coordinador
+**global** (264 Teresa, `ADMINISTRATIVO` dorm 5), pero API-ULV da un coordinador **por
+alumno** (366). A reconciliar antes de mover tipo 2/3 a API-ULV (decisión de dominio).
+
+## 5. Cadenas por tipo (entregables §7/§8/§9)
+
+**Tipo 1 — Pueblo (aprobado):**
+```
+1. alumno = LoginUniPass[token.id]; matricula = alumno.Matricula
+2. preceptorMatricula = prece(Bedroom.Identificador(alumno.Dormitorio))."ID JEFE"
+3. work = getStudentData(matricula).work
+   - si work vacío → STUDENT_WORK_NOT_FOUND (ver §3, pendiente decisión)
+   idDepto = work[0]."ID DEPTO"
+   jefeMatricula = JefeDepto(idDepto).EmpMatricula   (VIGENTE; cross-check work."ID JEFE")
+4. dedupe: preceptorMatricula == jefeMatricula ? [preceptor] : [preceptor, jefe]
+5. cada matrícula → LoginUniPass → IdLogin (si falta → AUTHORIZER_NOT_REGISTERED)
+6. Authorize orden 1 = preceptor; orden 2 = jefe (si aplica)
+```
+
+**Tipo 2 — Especial / Tipo 3 — A casa (comportamiento ACTUAL documentado):**
+- Hoy resueltos por el híbrido `GET /autorizadorSalida` + switch `AUTORIZADOR_SALIDAS`
+  (`Configuracion`): modo `COORDINADOR` → coordinador local (264), modo `PRECEPTOR` →
+  preceptor del dorm. 1 solo eslabón. Ver [[autorizador-salidas-switch]].
+- **Server-side futuro (propuesto):** el coordinador debería salir de
+  `coordinador/:matricula` (API-ULV, por alumno) en modo COORDINADOR — **pero** eso choca
+  con el coordinador global actual (§4). **No se cambia en este pase**; se documenta y se
+  decide antes de tocar tipo 2/3.
+
+## 6. Capa `UlvApiService` (entregable §7)
+Abstracción única (no dispersar HTTP en controladores). Base URL desde `ULV_API_URL`
+(+ `ULV_API_TIMEOUT_MS`). Métodos:
+`getStudentData(matricula)`, `getPreceptor(identificador)`, `getDepartmentHead(idDepto)`,
+`validateDepartmentHead(matricula)`, `getStudentCoordinator(matricula)`.
+
+## 7. Normalización de errores externos (entregable §10)
+API-ULV responde `200+objeto`, `200+null` (no encontrado) y `500` (param inválido). UniPass
+**no** propaga eso a Flutter; mapea a códigos internos:
+
+| Situación | code interno | HTTP UniPass |
 |---|---|---|
-| IdTipoSalida no válido | 400 | `INVALID_TIPO` |
-| Sin preceptor activo para el dorm | 409 | `PRECEPTOR_NOT_FOUND` |
-| Coordinador no resoluble (modo COORDINADOR) | 409 | `COORDINADOR_NOT_RESOLVABLE` |
-| Cadena no construible (ningún autorizador) | 409 | `CHAIN_NOT_BUILDABLE` |
-| Datos inconsistentes (alumno sin dorm, etc.) | 409 | `INCONSISTENT_DATA` |
+| API-ULV inalcanzable / conexión | `ULV_API_UNAVAILABLE` | 502 |
+| Timeout | `ULV_API_TIMEOUT` | 504 |
+| Alumno no encontrado en API-ULV | `STUDENT_NOT_FOUND` | 409 |
+| Alumno sin `work` | `STUDENT_WORK_NOT_FOUND` | 409 |
+| Preceptor no resuelto (prece null/500) | `PRECEPTOR_NOT_FOUND` | 409 |
+| Jefe de depto no resuelto (JefeDepto null) | `DEPARTMENT_HEAD_NOT_FOUND` | 409 |
+| Coordinador no resuelto (coordinador null) | `COORDINATOR_NOT_FOUND` | 409 |
+| Matrícula institucional sin cuenta UniPass | `AUTHORIZER_NOT_REGISTERED` | 409 |
+| Cadena incompleta tras dedupe | `AUTHORIZATION_CHAIN_INCOMPLETE` | 409 |
 
-### Response (éxito)
+En todos: **NO crear Permission**. No generar usuarios ni usar fallback de autorizador.
+
+## 8. Contrato `POST /permission` (entregable §11)
+
+**Request (solo datos de la solicitud):**
 ```json
-{ "Id": <IdPermission>, "IdTipoSalida": 1, "StatusPermission": "Pendiente",
-  "cadena": [ { "IdEmpleado": 41, "NoDepto": 318, "rol": "PRECEPTOR", "orden": 1 } ] }
+{ "FechaSolicitada":"...", "FechaSalida":"...", "FechaRegreso":"...",
+  "Motivo":"...", "IdTipoSalida":1|2|3, "MedioSalida":"opcional" }
 ```
+Auth ✅ Bearer. **Identidad = token** (`IdUser = token.id`). Flutter **no** es autoridad de:
+`IdUser, IdEmpleado, idJefe, idDepto, NoDepto, coordinador, cadena` (se aceptan por compat y
+se **ignoran**).
 
-### Transacción (obligatoria)
+**Flujo (API-ULV FUERA de la transacción, entregable §9):**
 ```
+1. verifyToken → token.id
+2. matricula = LoginUniPass[token.id].Matricula   (409 STUDENT/INCONSISTENT_DATA si falta)
+3-7. consultar API-ULV: preceptor / work→jefe / coordinador (según tipo)
+8. convertir matrículas institucionales → IdLogin UniPass (409 AUTHORIZER_NOT_REGISTERED)
+9. deduplicar autorizadores (por matrícula)
+10. validar cadena completa (409 AUTHORIZATION_CHAIN_INCOMPLETE)
+--- solo si la cadena está completa ---
 BEGIN TRAN
-  alumno = LoginUniPass[token.id]         (409 INCONSISTENT_DATA si falta dorm)
-  cadena = resolver(IdTipoSalida, alumno) (409 si no construible)
-  INSERT Permission
-  INSERT Authorize[]  (uno por eslabón)
-COMMIT   -- ante cualquier error: ROLLBACK
+  INSERT Permission (IdUser=token.id, ...)
+  INSERT Authorize[] (orden 1..n)
+COMMIT            (ROLLBACK ante cualquier error SQL)
 ```
 Regla: **Permission + Authorize completos, o ninguno.** Nunca Permission sin Authorize
-(elimina el caso 7048).
+(elimina el caso 7048). Si API-ULV falla o falta un autorizador obligatorio → **no** se abre
+la transacción.
 
-### Idempotencia (propuesta)
-- Header opcional `Idempotency-Key` (uuid del cliente): si llega repetido dentro de una
-  ventana, devolver la misma `Permission` sin duplicar.
-- Alternativa sin header: dedupe por `(IdUser, IdTipoSalida, FechaSalida, FechaRegreso)`
-  con estado no cancelado dentro de ~1 min → devolver la existente (200) en vez de crear otra.
-- Cubre doble submit / timeout / reintento del cliente.
+**Response (éxito):**
+```json
+{ "Id": <IdPermission>, "IdTipoSalida": 1, "StatusPermission": "Pendiente",
+  "cadena": [ { "orden":1, "IdEmpleado":41, "matricula":"41", "rol":"Preceptor" },
+              { "orden":2, "IdEmpleado":9,  "matricula":"366","rol":"Jefe de trabajo" } ] }
+```
 
-## 5. Limpieza pendiente
-- Permission **7048** (huérfana, Pueblo, sin Authorize): cancelar o eliminar como dato de
-  prueba una vez acordado el flujo (no tocar aún).
+## 9. Idempotencia (entregable §12)
+Evitar duplicados por doble tap / timeout / reintento / respuesta perdida tras COMMIT:
+- **Header `Idempotency-Key`** (uuid del cliente por intento de solicitud). Persistir
+  `(IdempotencyKey → IdPermission)` en una tabla `IdempotencyRequest` (migración propuesta,
+  sin aplicar). Si llega repetido: devolver la **misma** Permission (200) sin recrear.
+- **Fallback sin header:** dedupe por `(IdUser, IdTipoSalida, FechaSalida, FechaRegreso)` con
+  estado no cancelado dentro de una ventana corta (~2 min) → devolver la existente.
+- El `Idempotency-Key` se registra **dentro** de la transacción para atomicidad.
 
-## 6. Alcance de este pase
-Solo **análisis + contrato**. No se implementa 7.4A ni se toca 7.4B
-(`/authorize`, `/autorizarPermission`, `/permissionValorado`, `/checks`).
+## 10. Casos de prueba propuestos (entregable §13)
+Con `UlvApiService` **mockeado** (sin llamar API-ULV real ni cuentas reales destructivas):
+
+| Caso | Escenario | Esperado |
+|---|---|---|
+| A | Pueblo, preceptor(41) != jefe(9/366) | 1 Permission + 2 Authorize (orden 1,2) |
+| B | Pueblo, preceptor == jefe (misma matrícula) | 1 Permission + 1 Authorize (dedupe) |
+| C | `prece` → null/500 | `PRECEPTOR_NOT_FOUND`, 0 Permission |
+| D | alumno con `work: []` | `STUDENT_WORK_NOT_FOUND`, 0 Permission |
+| E | `JefeDepto` → null | `DEPARTMENT_HEAD_NOT_FOUND`, 0 Permission |
+| F | jefe institucional (213) sin cuenta UniPass | `AUTHORIZER_NOT_REGISTERED`, 0 Permission |
+| G | API-ULV caída/timeout | `ULV_API_UNAVAILABLE`/`ULV_API_TIMEOUT`, 0 Permission |
+| H | error SQL creando Authorize | ROLLBACK: 0 Permission, 0 Authorize |
+| I | doble request / mismo Idempotency-Key | 1 sola Permission (sin duplicar) |
+
+## 11. Limpieza / pendientes
+- Permission **7048** (huérfana Pueblo, 0 Authorize): cancelar/eliminar como dato de prueba
+  al implementar (no tocar aún).
+- Config env a definir: `ULV_API_URL`, `ULV_API_TIMEOUT_MS` (y secreto si API-ULV lo exige,
+  **solo por env**).
+
+## 12. Confirmación (entregable §14)
+**No se realizaron cambios productivos** en 7.4A ni 7.4B. Este pase es únicamente
+análisis/diseño. `POST /authorize`, `PUT /autorizarPermission/:Id`,
+`PUT /permissionValorado/:Id`, `POST /checks` sin tocar.
+
+## 13. Decisiones de dominio a cerrar antes de implementar
+1. Pueblo con alumno **sin `work`** → ¿error o preceptor-solo? (§3)
+2. `work.ID JEFE` vs `JefeDepto.EmpMatricula` en caso de discrepancia → ¿siempre JefeDepto? (§3)
+3. Tipo 2/3: coordinador **por alumno** (API-ULV, 366) vs **global** actual (264) → ¿cuál rige? (§4)

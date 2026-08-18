@@ -182,12 +182,18 @@ debe poder borrar docs de su dormitorio, es una **extensión de scope** a decidi
 Pendiente de Frontend antes de gatear (§29): migrar estas llamadas a `AuthHttpClient` y
 confirmar Bearer; confirmar si `/statusRevision` sigue vivo; definir si el reviewer borra docs.
 
-## Task 7.4A — Creación transaccional Permission + Authorize (ANÁLISIS + contrato)
-Análisis de BD y contrato de `POST /permission` en **[[task7.4a-analysis]]**
-(`docs/task7.4a-analysis.md`). Hallazgo clave: el backend deriva tipo 2/3 y el 1er eslabón
-de tipo 1 (preceptor del dorm), pero el 2º eslabón de Pueblo (jefe/depto) **no está modelado**
-para alumnos → decisión de dominio pendiente. Permission 7048 = huérfana confirmada. Sin
-cambios productivos; no se toca 7.4B.
+## Task 7.4A — Creación transaccional Permission + Authorize (ANÁLISIS cerrado con API-ULV)
+Análisis + contrato en **[[task7.4a-analysis]]** (`docs/task7.4a-analysis.md`), actualizado
+2026-08-18 con **API-ULV** (verificado en vivo). Regla Pueblo aprobada: Preceptor → Jefe de
+trabajo (dedupe por matrícula). Cadena resuelta vía API-ULV (`ULV_API_URL`): preceptor por
+`prece/:Bedroom.Identificador`, jefe por `work.ID DEPTO → JefeDepto/:IdDepto.EmpMatricula`
+(vigente; `work.ID JEFE` = cross-check, puede estar stale), coordinador por
+`coordinador/:matricula`. Conversión matrícula institucional → `LoginUniPass` → `IdLogin`;
+si falta cuenta → `AUTHORIZER_NOT_REGISTERED`. API-ULV **fuera** de la transacción; regla
+Permission+Authorize completos o ninguno. Capa `UlvApiService` (sin hosts hardcodeados).
+**3 decisiones de dominio pendientes:** (1) Pueblo con alumno sin `work`; (2) discrepancia
+`work.ID JEFE` vs `JefeDepto`; (3) coordinador por-alumno (API-ULV) vs global (264) en tipo 2/3.
+Permission 7048 = huérfana confirmada. **Sin cambios productivos**; no se toca 7.4B.
 
 ## Task 7.3 — EN ESPERA (prioridad: 7.1.B → 7.4A → 7.3)
 
