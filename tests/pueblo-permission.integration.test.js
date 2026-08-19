@@ -1,6 +1,6 @@
 // Task 7.4A - Integración de POST /permission Tipo 1 (Pueblo). DB real + UlvApiService
 // mockeado. No destructivo sobre datos previos: cada creación se limpia al final.
-import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest';
 import request from 'supertest';
 import sql from 'mssql';
 import 'dotenv/config';
@@ -14,7 +14,14 @@ vi.mock('../src/services/ulvApiService.js', () => ({
     UlvApiError: class extends Error { constructor(c) { super(c); this.code = c; } }
 }));
 
+// Mock de notificaciones para aseverar A QUIÉN se notifica (sin socket real).
+vi.mock('../src/util/socketHelpers.js', () => ({
+    emitToUser: vi.fn(),
+    emitToEmpleado: vi.fn()
+}));
+
 import * as ulv from '../src/services/ulvApiService.js';
+import { emitToEmpleado } from '../src/util/socketHelpers.js';
 import app from '../src/app.js';
 import { generateAccessToken } from '../src/util/tokens.js';
 import { createPermissionWithChainTx } from '../src/repositories/permission.repo.js';
@@ -49,7 +56,9 @@ d('Task 7.4A POST /permission Pueblo (integración)', () => {
     const authRows = async (idP) => (await pool.request().input('id', sql.Int, idP)
         .query('SELECT IdEmpleado, NoDepto, StatusAuthorize FROM Authorize WHERE IdPermission=@id ORDER BY IdAuthorize')).recordset;
 
-    it('Pueblo normal (Jefe 273 != Preceptor 41) -> 1 Permission + 2 Authorize (orden 1 Jefe, orden 2 Preceptor)', async () => {
+    beforeEach(() => { vi.clearAllMocks(); });
+
+    it('Pueblo normal (Jefe 273 != Preceptor 41) -> 2 Authorize (orden 1 Jefe, 2 Preceptor); notifica SOLO al Jefe', async () => {
         ulv.getStudentData.mockResolvedValue({ type: 'ALUMNO', work: [{ 'ID DEPTO': 302, 'ID JEFE': 273 }] });
         ulv.getDepartmentHead.mockResolvedValue({ EmpMatricula: '273' }); // Rafael (IdLogin 2055)
         ulv.getPreceptor.mockResolvedValue({ 'ID JEFE': 41 });            // Melytzin (IdLogin 3)
@@ -62,9 +71,16 @@ d('Task 7.4A POST /permission Pueblo (integración)', () => {
         creados.push(res.body.Id);
         const rows = await authRows(res.body.Id);
         expect(rows.map((r) => r.IdEmpleado)).toEqual([273, 41]);
+
+        // Notificación: solo al orden 1 (Jefe 273), con el evento del flujo legacy.
+        expect(emitToEmpleado).toHaveBeenCalledTimes(1);
+        expect(emitToEmpleado.mock.calls[0][2]).toBe(273);
+        expect(emitToEmpleado.mock.calls[0][3]).toBe('new_authorization_assigned');
+        // Preceptor 41 NO recibe notificación inicial (se resuelve en 7.4B).
+        expect(emitToEmpleado.mock.calls.some((c) => c[2] === 41)).toBe(false);
     });
 
-    it('Pueblo deduplicado (Jefe == Preceptor 41) -> 1 Permission + 1 Authorize', async () => {
+    it('Pueblo deduplicado (Jefe == Preceptor 41) -> 1 Authorize; UNA sola notificación', async () => {
         ulv.getStudentData.mockResolvedValue({ type: 'ALUMNO', work: [{ 'ID DEPTO': 302, 'ID JEFE': 41 }] });
         ulv.getDepartmentHead.mockResolvedValue({ EmpMatricula: '41' });
         ulv.getPreceptor.mockResolvedValue({ 'ID JEFE': 41 });
@@ -74,9 +90,11 @@ d('Task 7.4A POST /permission Pueblo (integración)', () => {
         expect(res.body.cadena).toHaveLength(1);
         creados.push(res.body.Id);
         expect(await authRows(res.body.Id)).toHaveLength(1);
+        expect(emitToEmpleado).toHaveBeenCalledTimes(1);
+        expect(emitToEmpleado.mock.calls[0][2]).toBe(41);
     });
 
-    it('Idempotencia: mismo Idempotency-Key -> una sola Permission (2do = replayed)', async () => {
+    it('Idempotencia: mismo Idempotency-Key -> una sola Permission; el replay NO vuelve a notificar', async () => {
         ulv.getStudentData.mockResolvedValue({ type: 'ALUMNO', work: [{ 'ID DEPTO': 302, 'ID JEFE': 273 }] });
         ulv.getDepartmentHead.mockResolvedValue({ EmpMatricula: '273' });
         ulv.getPreceptor.mockResolvedValue({ 'ID JEFE': 41 });
@@ -89,6 +107,29 @@ d('Task 7.4A POST /permission Pueblo (integración)', () => {
         expect(r2.body.replayed).toBe(true);
         expect(r2.body.Id).toBe(r1.body.Id);
         creados.push(r1.body.Id);
+        // Solo la creación real (r1) notifica; el replay (r2) NO.
+        expect(emitToEmpleado).toHaveBeenCalledTimes(1);
+    });
+
+    it('Fallo de notificación post-COMMIT -> Permission permanece creada (201)', async () => {
+        ulv.getStudentData.mockResolvedValue({ type: 'ALUMNO', work: [{ 'ID DEPTO': 302, 'ID JEFE': 273 }] });
+        ulv.getDepartmentHead.mockResolvedValue({ EmpMatricula: '273' });
+        ulv.getPreceptor.mockResolvedValue({ 'ID JEFE': 41 });
+        emitToEmpleado.mockRejectedValueOnce(new Error('FCM/socket caido'));
+
+        const res = await request(app).post('/permission').set('Authorization', `Bearer ${tokenAlumno}`).send(cuerpo);
+        expect(res.status).toBe(201); // el fallo de notificación no revierte
+        creados.push(res.body.Id);
+        const rows = await authRows(res.body.Id);
+        expect(rows).toHaveLength(2); // Permission + Authorize siguen creados
+    });
+
+    it('Tipos 2/3/4 intactos: Tipo 2 no dispara notificación al empleado (emitToEmpleado)', async () => {
+        const res = await request(app).post('/permission').set('Authorization', `Bearer ${tokenAlumno}`)
+            .send({ ...cuerpo, IdTipoSalida: 2 });
+        expect(res.status).toBe(200); // legacy usa res.json (200)
+        if (res.body.Id) creados.push(res.body.Id);
+        expect(emitToEmpleado).not.toHaveBeenCalled();
     });
 
     it('Sin work -> 409 STUDENT_WORK_NOT_FOUND, 0 Permission', async () => {

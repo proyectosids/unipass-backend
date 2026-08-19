@@ -144,14 +144,9 @@ const createPermissionPueblo = async (req, res) => {
             idLogin: idUser
         });
 
-        res.status(replayed ? 200 : 201).json({
-            Id: idPermission,
-            IdTipoSalida: 1,
-            StatusPermission: 'Pendiente',
-            cadena: authorizers.map((a) => ({ orden: a.orden, IdEmpleado: a.idEmpleado, matricula: a.matricula, rol: a.rol })),
-            replayed
-        });
-
+        // Notificaciones best-effort DESPUES del COMMIT: la Permission ya está creada, un
+        // fallo de socket/FCM NO debe revertirla. Solo en creación real (201), NUNCA en
+        // replay idempotente (evita reenvíos por reintento/timeout).
         if (!replayed) {
             try {
                 const io = req.app.get('io');
@@ -160,10 +155,24 @@ const createPermissionPueblo = async (req, res) => {
                     matriculaAlumno: String(alumno.Matricula), nombreAlumno: alumno.Nombre,
                     fechaSalida: fechas.fechaSalida, timestamp: new Date().toISOString()
                 });
-            } catch (socketError) {
-                console.error('[Socket] Error en createPermissionPueblo:', socketError.message);
+                // Task 7.4A: avisar SOLO al primer eslabón (orden 1 = Jefe de trabajo),
+                // reutilizando el mismo evento del flujo legacy (createAuthorize). El
+                // Preceptor (orden 2) se notificará en la transición de 7.4B.
+                await emitToEmpleado(io, null, authorizers[0].idEmpleado, 'new_authorization_assigned', {
+                    idPermission, status: 'Pendiente', timestamp: new Date().toISOString()
+                });
+            } catch (notifyErr) {
+                console.error('[Task7.4A] Notificacion post-commit fallo (Permission ya creada):', notifyErr.message);
             }
         }
+
+        res.status(replayed ? 200 : 201).json({
+            Id: idPermission,
+            IdTipoSalida: 1,
+            StatusPermission: 'Pendiente',
+            cadena: authorizers.map((a) => ({ orden: a.orden, IdEmpleado: a.idEmpleado, matricula: a.matricula, rol: a.rol })),
+            replayed
+        });
     } catch (err) {
         console.error('Error creando Permission Pueblo:', err);
         if (!res.headersSent) res.status(500).json({ message: 'Error al crear el permiso', code: 'SERVER_ERROR' });

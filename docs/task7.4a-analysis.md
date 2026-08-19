@@ -24,6 +24,14 @@ Jefe corresponde a 7.4B).
 - `database/migrations/009_idempotency.sql` — tabla `IdempotencyRequest` (aplicada).
 - Tests: `tests/pueblo-chain.test.js` (unit), `tests/pueblo-permission.integration.test.js`.
 
+## Notificación al Jefe (orden 1) — ✅ implementada
+Tras el COMMIT, `POST /permission` Tipo 1 notifica **solo al primer eslabón (Jefe, orden 1)**
+reutilizando el evento del flujo legacy `new_authorization_assigned` (vía `emitToEmpleado`,
+que resuelve cobertura/suplencia). El **Preceptor (orden 2) NO** se notifica aún (será en 7.4B).
+Best-effort **después** del COMMIT: un fallo de socket/FCM se loguea y **no** revierte la
+Permission. En **replay** idempotente (200) **no** se re-notifica (solo en la creación real, 201).
+Nota: el flujo de asignación legacy solo usa socket (no hay push FCM aparte que reutilizar).
+
 ## Indicaciones para Flutter (Tipo 1 Pueblo)
 - `POST /permission` con `IdTipoSalida:1` + Bearer ahora **crea Permission + Authorize** en el
   backend. Flutter debe **dejar de** ejecutar `POST /authorize` para Pueblo y **dejar de**
