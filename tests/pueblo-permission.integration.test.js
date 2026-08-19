@@ -14,14 +14,18 @@ vi.mock('../src/services/ulvApiService.js', () => ({
     UlvApiError: class extends Error { constructor(c) { super(c); this.code = c; } }
 }));
 
-// Mock de notificaciones para aseverar A QUIÉN se notifica (sin socket real).
+// Mock de notificaciones para aseverar A QUIÉN se notifica (sin socket/FCM real).
 vi.mock('../src/util/socketHelpers.js', () => ({
     emitToUser: vi.fn(),
     emitToEmpleado: vi.fn()
 }));
+vi.mock('../src/services/notificationService.js', () => ({
+    sendToEmployee: vi.fn().mockResolvedValue({ success: true })
+}));
 
 import * as ulv from '../src/services/ulvApiService.js';
 import { emitToEmpleado } from '../src/util/socketHelpers.js';
+import { sendToEmployee } from '../src/services/notificationService.js';
 import app from '../src/app.js';
 import { generateAccessToken } from '../src/util/tokens.js';
 import { createPermissionWithChainTx } from '../src/repositories/permission.repo.js';
@@ -72,12 +76,15 @@ d('Task 7.4A POST /permission Pueblo (integración)', () => {
         const rows = await authRows(res.body.Id);
         expect(rows.map((r) => r.IdEmpleado)).toEqual([273, 41]);
 
-        // Notificación: solo al orden 1 (Jefe 273), con el evento del flujo legacy.
+        // Socket: solo al orden 1 (Jefe 273), con el evento del flujo legacy.
         expect(emitToEmpleado).toHaveBeenCalledTimes(1);
         expect(emitToEmpleado.mock.calls[0][2]).toBe(273);
         expect(emitToEmpleado.mock.calls[0][3]).toBe('new_authorization_assigned');
-        // Preceptor 41 NO recibe notificación inicial (se resuelve en 7.4B).
         expect(emitToEmpleado.mock.calls.some((c) => c[2] === 41)).toBe(false);
+        // Push FCM: solo al Jefe (273), title fijo; Preceptor 41 sin push inicial (7.4B).
+        expect(sendToEmployee).toHaveBeenCalledTimes(1);
+        expect(sendToEmployee.mock.calls[0][0]).toMatchObject({ matricula: '273', title: 'Solicitud de Salida al Pueblo' });
+        expect(sendToEmployee.mock.calls.some((c) => c[0].matricula === '41')).toBe(false);
     });
 
     it('Pueblo deduplicado (Jefe == Preceptor 41) -> 1 Authorize; UNA sola notificación', async () => {
@@ -92,6 +99,9 @@ d('Task 7.4A POST /permission Pueblo (integración)', () => {
         expect(await authRows(res.body.Id)).toHaveLength(1);
         expect(emitToEmpleado).toHaveBeenCalledTimes(1);
         expect(emitToEmpleado.mock.calls[0][2]).toBe(41);
+        // Un solo push, al único autorizador.
+        expect(sendToEmployee).toHaveBeenCalledTimes(1);
+        expect(sendToEmployee.mock.calls[0][0].matricula).toBe('41');
     });
 
     it('Idempotencia: mismo Idempotency-Key -> una sola Permission; el replay NO vuelve a notificar', async () => {
@@ -107,29 +117,54 @@ d('Task 7.4A POST /permission Pueblo (integración)', () => {
         expect(r2.body.replayed).toBe(true);
         expect(r2.body.Id).toBe(r1.body.Id);
         creados.push(r1.body.Id);
-        // Solo la creación real (r1) notifica; el replay (r2) NO.
+        // Solo la creación real (r1) notifica; el replay (r2) NO (ni socket ni push).
         expect(emitToEmpleado).toHaveBeenCalledTimes(1);
+        expect(sendToEmployee).toHaveBeenCalledTimes(1);
     });
 
-    it('Fallo de notificación post-COMMIT -> Permission permanece creada (201)', async () => {
+    it('Fallo de socket post-COMMIT -> Permission permanece creada (201)', async () => {
         ulv.getStudentData.mockResolvedValue({ type: 'ALUMNO', work: [{ 'ID DEPTO': 302, 'ID JEFE': 273 }] });
         ulv.getDepartmentHead.mockResolvedValue({ EmpMatricula: '273' });
         ulv.getPreceptor.mockResolvedValue({ 'ID JEFE': 41 });
-        emitToEmpleado.mockRejectedValueOnce(new Error('FCM/socket caido'));
+        emitToEmpleado.mockRejectedValueOnce(new Error('socket caido'));
 
         const res = await request(app).post('/permission').set('Authorization', `Bearer ${tokenAlumno}`).send(cuerpo);
-        expect(res.status).toBe(201); // el fallo de notificación no revierte
+        expect(res.status).toBe(201);
         creados.push(res.body.Id);
-        const rows = await authRows(res.body.Id);
-        expect(rows).toHaveLength(2); // Permission + Authorize siguen creados
+        expect(await authRows(res.body.Id)).toHaveLength(2);
     });
 
-    it('Tipos 2/3/4 intactos: Tipo 2 no dispara notificación al empleado (emitToEmpleado)', async () => {
+    it('Error del servicio FCM -> 201 permanece exitoso, Permission creada', async () => {
+        ulv.getStudentData.mockResolvedValue({ type: 'ALUMNO', work: [{ 'ID DEPTO': 302, 'ID JEFE': 273 }] });
+        ulv.getDepartmentHead.mockResolvedValue({ EmpMatricula: '273' });
+        ulv.getPreceptor.mockResolvedValue({ 'ID JEFE': 41 });
+        sendToEmployee.mockRejectedValueOnce(new Error('FCM caido'));
+
+        const res = await request(app).post('/permission').set('Authorization', `Bearer ${tokenAlumno}`).send(cuerpo);
+        expect(res.status).toBe(201);
+        creados.push(res.body.Id);
+        expect(await authRows(res.body.Id)).toHaveLength(2);
+    });
+
+    it('Jefe sin token FCM -> 201 permanece exitoso (no es AUTHORIZER_NOT_REGISTERED)', async () => {
+        ulv.getStudentData.mockResolvedValue({ type: 'ALUMNO', work: [{ 'ID DEPTO': 302, 'ID JEFE': 273 }] });
+        ulv.getDepartmentHead.mockResolvedValue({ EmpMatricula: '273' });
+        ulv.getPreceptor.mockResolvedValue({ 'ID JEFE': 41 });
+        sendToEmployee.mockResolvedValueOnce({ skipped: 'NO_TOKEN' });
+
+        const res = await request(app).post('/permission').set('Authorization', `Bearer ${tokenAlumno}`).send(cuerpo);
+        expect(res.status).toBe(201);
+        creados.push(res.body.Id);
+        expect(await authRows(res.body.Id)).toHaveLength(2);
+    });
+
+    it('Tipos 2/3/4 intactos: Tipo 2 no dispara socket ni push al empleado', async () => {
         const res = await request(app).post('/permission').set('Authorization', `Bearer ${tokenAlumno}`)
             .send({ ...cuerpo, IdTipoSalida: 2 });
         expect(res.status).toBe(200); // legacy usa res.json (200)
         if (res.body.Id) creados.push(res.body.Id);
         expect(emitToEmpleado).not.toHaveBeenCalled();
+        expect(sendToEmployee).not.toHaveBeenCalled();
     });
 
     it('Sin work -> 409 STUDENT_WORK_NOT_FOUND, 0 Permission', async () => {

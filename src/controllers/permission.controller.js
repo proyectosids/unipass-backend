@@ -29,6 +29,7 @@ import { findUserById, findUserByMatricula } from '../repositories/user.repo.js'
 import { findBedroomIdentificador } from '../repositories/bedroom.repo.js';
 import { resolvePuebloChain } from '../util/puebloChain.js';
 import * as ulv from '../services/ulvApiService.js';
+import { sendToEmployee } from '../services/notificationService.js';
 import { emitToUser, emitToEmpleado } from '../util/socketHelpers.js';
 
 // Ajuste de zona horaria hardcodeado (UTC-6): el cliente manda hora local sin offset
@@ -148,6 +149,8 @@ const createPermissionPueblo = async (req, res) => {
         // fallo de socket/FCM NO debe revertirla. Solo en creación real (201), NUNCA en
         // replay idempotente (evita reenvíos por reintento/timeout).
         if (!replayed) {
+            const jefe = authorizers[0]; // orden 1 (o único, si dedupe)
+            // Socket (best-effort). Solo al Jefe (orden 1); Preceptor -> 7.4B.
             try {
                 const io = req.app.get('io');
                 emitToUser(io, alumno.Matricula, 'new_permission_request', {
@@ -155,14 +158,22 @@ const createPermissionPueblo = async (req, res) => {
                     matriculaAlumno: String(alumno.Matricula), nombreAlumno: alumno.Nombre,
                     fechaSalida: fechas.fechaSalida, timestamp: new Date().toISOString()
                 });
-                // Task 7.4A: avisar SOLO al primer eslabón (orden 1 = Jefe de trabajo),
-                // reutilizando el mismo evento del flujo legacy (createAuthorize). El
-                // Preceptor (orden 2) se notificará en la transición de 7.4B.
-                await emitToEmpleado(io, null, authorizers[0].idEmpleado, 'new_authorization_assigned', {
+                await emitToEmpleado(io, null, jefe.idEmpleado, 'new_authorization_assigned', {
                     idPermission, status: 'Pendiente', timestamp: new Date().toISOString()
                 });
-            } catch (notifyErr) {
-                console.error('[Task7.4A] Notificacion post-commit fallo (Permission ya creada):', notifyErr.message);
+            } catch (socketErr) {
+                console.error('[Task7.4A] Notificacion socket post-commit fallo (Permission ya creada):', socketErr.message);
+            }
+            // Push FCM server-side al Jefe (orden 1). Token resuelto en el backend; best-effort:
+            // un fallo o la ausencia de token NO revierten ni fallan el POST /permission.
+            try {
+                await sendToEmployee({
+                    matricula: jefe.matricula,
+                    title: 'Solicitud de Salida al Pueblo',
+                    body: 'Tienes una solicitud de Salida al Pueblo pendiente de autorización.'
+                });
+            } catch (pushErr) {
+                console.error('[Task7.4A] Push FCM post-commit fallo (Permission ya creada):', pushErr.message);
             }
         }
 
