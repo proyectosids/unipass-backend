@@ -182,13 +182,21 @@ debe poder borrar docs de su dormitorio, es una **extensión de scope** a decidi
 Pendiente de Frontend antes de gatear (§29): migrar estas llamadas a `AuthHttpClient` y
 confirmar Bearer; confirmar si `/statusRevision` sigue vivo; definir si el reviewer borra docs.
 
-## Task 7.4A — Creación transaccional Permission + Authorize (Tipo 1) — ✅ IMPLEMENTADO (2026-08-18)
-Solo Tipo 1 (Pueblo). Orden **Jefe (1) → Preceptor (2)**, dedupe por matrícula. API-ULV fuera
-de la transacción; Permission+Authorize atómico; idempotencia por `Idempotency-Key` (migración
-009). Tipos 2/3 **sin cambios** de coordinador (`PENDING_DOMAIN_DECISION_COORDINATOR_TYPE_2_3`).
-7.4B intacto. Detalle e indicaciones Flutter en [[task7.4a-analysis]]. Tests: unit (cadena) +
-integración (DB, `UlvApiService` mockeado): normal 2-auth, dedupe 1-auth, idempotencia, sin work,
-sin jefe/preceptor, autorizador sin cuenta, API-ULV caída, rollback.
+## Task 7.4A — Tipo 1 (Pueblo) — ✅ CLOSED / Flutter-certified (2026-08-19)
+Creación server-side de Permission + Authorize. Orden **Jefe (1) → Preceptor (2)**, dedupe por
+matrícula. API-ULV fuera de la transacción; Permission+Authorize atómico; idempotencia por
+`Idempotency-Key` (migración 009). Notificación al **Jefe (orden 1)**: socket
+`new_authorization_assigned` + **push FCM server-side** (`NotificationService`, token resuelto en
+backend, `FIREBASE_NOTIFICATION_URL`). Detalle e indicaciones Flutter en [[task7.4a-analysis]].
+
+**Smoke Flutter-certified (2026-08-19):** alumno 223321 → **Permission 7069** (única,
+`StatusPermission=Pendiente`); **2 Authorize**: orden 1 matrícula **562** (Jefe), orden 2 matrícula
+**41** (Preceptor); sin duplicados; replay con misma `Idempotency-Key` → 200 `replayed:true` **sin**
+crear una 2ª Permission. Validado por lectura. **No limpiar 7069** (dato del smoke).
+
+Tests 45/45. **Sigue expresamente pendiente:** `PENDING_DOMAIN_DECISION_COORDINATOR_TYPE_2_3`,
+`PENDING_FLOW_ANALYSIS_TYPE_4`, y **Task 7.4B** (`/autorizarPermission`, `/permissionValorado`,
+`/checks`) intacta. Permission **7048** = residuo histórico del bug anterior (limpieza administrativa posterior).
 
 ## (histórico) Task 7.4A — análisis previo
 Análisis + contrato en **[[task7.4a-analysis]]** (`docs/task7.4a-analysis.md`), actualizado
