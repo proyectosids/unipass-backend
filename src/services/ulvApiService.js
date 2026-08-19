@@ -1,0 +1,50 @@
+// Task 7.4A - Abstracción de API-ULV (fuente institucional de la cadena de autorización).
+// Centraliza las llamadas HTTP; base URL desde env (ULV_API_URL). NO hardcodear hosts.
+// Errores de transporte -> UlvApiError con code normalizado. "No encontrado"
+// (200+null o 500 por dato inválido) -> null, y el llamador decide el code de dominio.
+
+const BASE = () => process.env.ULV_API_URL;
+const TIMEOUT = () => parseInt(process.env.ULV_API_TIMEOUT_MS || '8000', 10);
+
+export class UlvApiError extends Error {
+    constructor(code) { super(code); this.code = code; }
+}
+
+const getJson = async (path) => {
+    const base = BASE();
+    if (!base) throw new UlvApiError('ULV_API_UNAVAILABLE');
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), TIMEOUT());
+    let res;
+    try {
+        res = await fetch(`${base}${path}`, { signal: controller.signal });
+    } catch (err) {
+        throw new UlvApiError(err.name === 'AbortError' ? 'ULV_API_TIMEOUT' : 'ULV_API_UNAVAILABLE');
+    } finally {
+        clearTimeout(timer);
+    }
+    // API-ULV usa 500 para "dato no válido" y 200+null para "no encontrado":
+    // ambos se tratan como null (recurso ausente), no como caída del servicio.
+    if (!res.ok) return null;
+    return res.json().catch(() => null);
+};
+
+// GET /api/datos/:matricula -> { type, work[] } (work: [{ "ID DEPTO", "DEPARTAMENTO", "ID JEFE", ... }])
+export const getStudentData = async (matricula) => {
+    const data = await getJson(`/api/datos/${encodeURIComponent(matricula)}`);
+    if (!data || !data.Data) throw new UlvApiError('STUDENT_NOT_FOUND');
+    return { type: data.Data.type, work: data.Data.work || [] };
+};
+
+// GET /api/datos/prece/:identificador -> { "ID JEFE": <matrícula preceptor>, ... } | null
+export const getPreceptor = (identificador) => getJson(`/api/datos/prece/${encodeURIComponent(identificador)}`);
+
+// GET /api/datos/JefeDepto/:idDepto -> { EmpMatricula, ... } | null  (jefe VIGENTE del depto)
+export const getDepartmentHead = (idDepto) => getJson(`/api/datos/JefeDepto/${encodeURIComponent(idDepto)}`);
+
+// GET /api/datos/getjefe/:matricula -> { EmpMatricula } | null  (valida que sea jefe de depto)
+export const validateDepartmentHead = (matricula) => getJson(`/api/datos/getjefe/${encodeURIComponent(matricula)}`);
+
+// GET /api/datos/coordinador/:matricula -> { empMatricula, IdDepartamento } | null
+// Infra lista, pero NO se usa productivamente para tipo 2/3 (PENDING_DOMAIN_DECISION_COORDINATOR_TYPE_2_3).
+export const getStudentCoordinator = (matricula) => getJson(`/api/datos/coordinador/${encodeURIComponent(matricula)}`);

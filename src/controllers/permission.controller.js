@@ -21,9 +21,29 @@ import {
     findDashboardDocumentosCounts,
     findUserTipoByMatricula,
     filterPermisosAdministrativo,
-    filterPermisosPreceptor
+    filterPermisosPreceptor,
+    createPermissionWithChainTx,
+    findPermissionByIdempotencyKey
 } from '../repositories/permission.repo.js';
+import { findUserById, findUserByMatricula } from '../repositories/user.repo.js';
+import { findBedroomIdentificador } from '../repositories/bedroom.repo.js';
+import { resolvePuebloChain } from '../util/puebloChain.js';
+import * as ulv from '../services/ulvApiService.js';
 import { emitToUser, emitToEmpleado } from '../util/socketHelpers.js';
+
+// Ajuste de zona horaria hardcodeado (UTC-6): el cliente manda hora local sin offset
+// (deuda tecnica conocida, docs/API.md #14.3). Devuelve las 3 fechas en ISO UTC.
+const ajustarFechasUTC = (body) => {
+    const adj = (s) => { const d = new Date(s); d.setHours(d.getHours() - 6); return d.toISOString(); };
+    return {
+        fechaSolicitada: adj(body.FechaSolicitada),
+        fechaSalida: adj(body.FechaSalida),
+        fechaRegreso: adj(body.FechaRegreso)
+    };
+};
+
+// Task 7.4A: HTTP por code de error de cadena. Transporte -> 502/504; dominio -> 409.
+const HTTP_POR_CODE = { ULV_API_UNAVAILABLE: 502, ULV_API_TIMEOUT: 504 };
 
 export const getPermissionsByUser = async (req, res) => {
     const { page = 1, limit = 10 } = req.query;
@@ -58,29 +78,112 @@ export const getPermission = async (req, res) => {
     }
 };
 
+// POST /permission. Task 7.4A: Tipo 1 (Pueblo) se crea server-side con su cadena
+// (Jefe→Preceptor) de forma transaccional. Tipos 2/3(/4) conservan el comportamiento
+// actual (Flutter orquesta /authorize; coordinador SIN cambios).
 export const createPermission = async (req, res) => {
+    if (Number(req.body?.IdTipoSalida) === 1) return createPermissionPueblo(req, res);
+    return createPermissionLegacy(req, res);
+};
+
+// Tipo 1 (Pueblo): cadena Jefe de trabajo (orden 1) -> Preceptor (orden 2), dedupe por
+// matricula. API-ULV se consulta ANTES de abrir la transaccion; Permission + Authorize se
+// crean atomicamente (o nada). Idempotencia por header Idempotency-Key.
+const createPermissionPueblo = async (req, res) => {
+    const idUser = req.user.id;
     try {
-        // Task 7.2: la identidad del alumno viene del token, NO del body. Flutter puede
-        // seguir enviando IdUser por compatibilidad, pero se ignora como fuente de identidad.
+        // Idempotencia: replay antes de gastar llamadas a API-ULV.
+        const idempotencyKey = req.header('Idempotency-Key') || null;
+        if (idempotencyKey) {
+            const prev = await findPermissionByIdempotencyKey(idempotencyKey);
+            if (prev) {
+                return res.status(200).json({ Id: prev, IdTipoSalida: 1, StatusPermission: 'Pendiente', replayed: true });
+            }
+        }
+
+        const alumno = await findUserById(idUser);
+        if (!alumno || !alumno.Matricula || alumno.Dormitorio === null || alumno.Dormitorio === undefined) {
+            return res.status(409).json({ message: 'Datos del alumno incompletos para construir la cadena', code: 'INCONSISTENT_DATA' });
+        }
+        const identificador = await findBedroomIdentificador(alumno.Dormitorio);
+        if (identificador === null || identificador === undefined) {
+            return res.status(409).json({ message: 'No se pudo resolver el preceptor (dormitorio sin registro institucional)', code: 'PRECEPTOR_NOT_FOUND' });
+        }
+
+        // Resolucion de cadena (fuera de la transaccion).
+        let authorizers;
+        try {
+            authorizers = await resolvePuebloChain({
+                getStudentData: ulv.getStudentData,
+                getDepartmentHead: ulv.getDepartmentHead,
+                getPreceptor: ulv.getPreceptor,
+                resolveLocalUser: async (matricula) => {
+                    const u = await findUserByMatricula(matricula);
+                    return u && u.StatusActividad === 1 ? u : null;
+                },
+                onMismatch: (info) => console.warn('[Task7.4A][JEFE_MISMATCH]', JSON.stringify(info))
+            }, { matricula: alumno.Matricula, identificador });
+        } catch (chainErr) {
+            const code = chainErr.code || 'AUTHORIZATION_CHAIN_INCOMPLETE';
+            return res.status(HTTP_POR_CODE[code] || 409).json({ message: 'No se pudo construir la cadena de autorizacion', code });
+        }
+
+        const fechas = ajustarFechasUTC(req.body);
+        const { idPermission, replayed } = await createPermissionWithChainTx({
+            permission: {
+                fechaSolicitada: fechas.fechaSolicitada,
+                statusPermission: req.body.StatusPermission || 'Pendiente',
+                fechaSalida: fechas.fechaSalida,
+                fechaRegreso: fechas.fechaRegreso,
+                motivo: req.body.Motivo,
+                idUser,
+                idTipoSalida: 1
+            },
+            authorizers,
+            idempotencyKey,
+            idLogin: idUser
+        });
+
+        res.status(replayed ? 200 : 201).json({
+            Id: idPermission,
+            IdTipoSalida: 1,
+            StatusPermission: 'Pendiente',
+            cadena: authorizers.map((a) => ({ orden: a.orden, IdEmpleado: a.idEmpleado, matricula: a.matricula, rol: a.rol })),
+            replayed
+        });
+
+        if (!replayed) {
+            try {
+                const io = req.app.get('io');
+                emitToUser(io, alumno.Matricula, 'new_permission_request', {
+                    idPermission, idTipoSalida: 1,
+                    matriculaAlumno: String(alumno.Matricula), nombreAlumno: alumno.Nombre,
+                    fechaSalida: fechas.fechaSalida, timestamp: new Date().toISOString()
+                });
+            } catch (socketError) {
+                console.error('[Socket] Error en createPermissionPueblo:', socketError.message);
+            }
+        }
+    } catch (err) {
+        console.error('Error creando Permission Pueblo:', err);
+        if (!res.headersSent) res.status(500).json({ message: 'Error al crear el permiso', code: 'SERVER_ERROR' });
+    }
+};
+
+// Tipos 2/3/4: comportamiento ACTUAL (sin cambios de coordinador). Flutter orquesta /authorize.
+const createPermissionLegacy = async (req, res) => {
+    try {
+        // Task 7.2: la identidad del alumno viene del token, NO del body.
         const idUser = req.user.id;
         const exists = await userExistsById(idUser);
         if (!exists) {
             return res.status(400).json({ error: 'El IdUsuario no existe en dbo.Users' });
         }
 
-        // Ajuste de zona horaria hardcodeado (UTC-6): el cliente manda hora local sin
-        // offset y aqui se convierte a UTC. Deuda tecnica conocida (docs/API.md #14.3):
-        // no maneja DST ni otras zonas; cambiarlo requiere coordinarse con la app.
-        const fechaSolicitada = new Date(req.body.FechaSolicitada);
-        fechaSolicitada.setHours(fechaSolicitada.getHours() - 6);
-        const fechaSalida = new Date(req.body.FechaSalida);
-        fechaSalida.setHours(fechaSalida.getHours() - 6);
-        const fechaRegreso = new Date(req.body.FechaRegreso);
-        fechaRegreso.setHours(fechaRegreso.getHours() - 6);
-
-        const fechaSolicitadaUTC = fechaSolicitada.toISOString();
-        const fechaSalidaUTC = fechaSalida.toISOString();
-        const fechaRegresoUTC = fechaRegreso.toISOString();
+        const fechas = ajustarFechasUTC(req.body);
+        const fechaSolicitadaUTC = fechas.fechaSolicitada;
+        const fechaSalidaUTC = fechas.fechaSalida;
+        const fechaRegresoUTC = fechas.fechaRegreso;
 
         const idPermissionCreated = await createPermissionRecord({
             fechaSolicitada: fechaSolicitadaUTC,

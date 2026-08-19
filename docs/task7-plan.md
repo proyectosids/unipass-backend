@@ -182,7 +182,15 @@ debe poder borrar docs de su dormitorio, es una **extensión de scope** a decidi
 Pendiente de Frontend antes de gatear (§29): migrar estas llamadas a `AuthHttpClient` y
 confirmar Bearer; confirmar si `/statusRevision` sigue vivo; definir si el reviewer borra docs.
 
-## Task 7.4A — Creación transaccional Permission + Authorize (ANÁLISIS cerrado con API-ULV)
+## Task 7.4A — Creación transaccional Permission + Authorize (Tipo 1) — ✅ IMPLEMENTADO (2026-08-18)
+Solo Tipo 1 (Pueblo). Orden **Jefe (1) → Preceptor (2)**, dedupe por matrícula. API-ULV fuera
+de la transacción; Permission+Authorize atómico; idempotencia por `Idempotency-Key` (migración
+009). Tipos 2/3 **sin cambios** de coordinador (`PENDING_DOMAIN_DECISION_COORDINATOR_TYPE_2_3`).
+7.4B intacto. Detalle e indicaciones Flutter en [[task7.4a-analysis]]. Tests: unit (cadena) +
+integración (DB, `UlvApiService` mockeado): normal 2-auth, dedupe 1-auth, idempotencia, sin work,
+sin jefe/preceptor, autorizador sin cuenta, API-ULV caída, rollback.
+
+## (histórico) Task 7.4A — análisis previo
 Análisis + contrato en **[[task7.4a-analysis]]** (`docs/task7.4a-analysis.md`), actualizado
 2026-08-18 con **API-ULV** (verificado en vivo). Regla Pueblo aprobada: Preceptor → Jefe de
 trabajo (dedupe por matrícula). Cadena resuelta vía API-ULV (`ULV_API_URL`): preceptor por

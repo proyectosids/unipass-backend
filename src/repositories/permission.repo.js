@@ -427,6 +427,74 @@ export const createPermissionRecord = ({
         return result.recordset[0].IdPermission;
     });
 
+// Task 7.4A: idempotencia. IdPermission ya creado para un Idempotency-Key, o null.
+export const findPermissionByIdempotencyKey = (idempotencyKey) =>
+    withConnection(async (pool) => {
+        const result = await pool.request()
+            .input('Key', sql.NVarChar(80), idempotencyKey)
+            .query('SELECT IdPermission FROM IdempotencyRequest WHERE IdempotencyKey = @Key');
+        return result.recordset[0]?.IdPermission ?? null;
+    });
+
+// Task 7.4A: creación TRANSACCIONAL de Permission + Authorize(s). O todo, o nada.
+// authorizers: [{ idEmpleado, noDepto, orden }] ya resueltos (fuera de la transacción).
+// Si se pasa idempotencyKey y ya existe -> devuelve el permiso previo (replayed) sin duplicar.
+export const createPermissionWithChainTx = ({ permission, authorizers, idempotencyKey = null, idLogin }) =>
+    withConnection(async (pool) => {
+        const tx = new sql.Transaction(pool);
+        await tx.begin();
+        try {
+            if (idempotencyKey) {
+                const prev = await new sql.Request(tx)
+                    .input('Key', sql.NVarChar(80), idempotencyKey)
+                    .query('SELECT IdPermission FROM IdempotencyRequest WHERE IdempotencyKey = @Key');
+                if (prev.recordset.length > 0) {
+                    await tx.commit();
+                    return { idPermission: prev.recordset[0].IdPermission, replayed: true };
+                }
+            }
+
+            const permRes = await new sql.Request(tx)
+                .input('FechaSolicitada', sql.DateTime, permission.fechaSolicitada)
+                .input('StatusPermission', sql.VarChar, permission.statusPermission)
+                .input('FechaSalida', sql.DateTime, permission.fechaSalida)
+                .input('FechaRegreso', sql.DateTime, permission.fechaRegreso)
+                .input('Motivo', sql.VarChar, permission.motivo)
+                .input('IdUser', sql.Int, permission.idUser)
+                .input('IdTipoSalida', sql.Int, permission.idTipoSalida)
+                .input('Observaciones', sql.VarChar, 'Ninguna')
+                .query(`INSERT INTO Permission (FechaSolicitada, StatusPermission, FechaSalida, FechaRegreso, Motivo, IdUser, IdTipoSalida, Observaciones)
+                        VALUES (@FechaSolicitada, @StatusPermission, @FechaSalida, @FechaRegreso, @Motivo, @IdUser, @IdTipoSalida, @Observaciones);
+                        SELECT SCOPE_IDENTITY() AS IdPermission;`);
+            const idPermission = permRes.recordset[0].IdPermission;
+
+            for (const a of authorizers) {
+                await new sql.Request(tx)
+                    .input('IdEmpleado', sql.Int, a.idEmpleado)
+                    .input('NoDepto', sql.Int, a.noDepto)
+                    .input('IdPermission', sql.Int, idPermission)
+                    .input('StatusAuthorize', sql.VarChar, 'Pendiente')
+                    .query(`INSERT INTO Authorize (IdEmpleado, NoDepto, IdPermission, StatusAuthorize)
+                            VALUES (@IdEmpleado, @NoDepto, @IdPermission, @StatusAuthorize)`);
+            }
+
+            if (idempotencyKey) {
+                await new sql.Request(tx)
+                    .input('Key', sql.NVarChar(80), idempotencyKey)
+                    .input('IdLogin', sql.Int, idLogin)
+                    .input('IdPermission', sql.Int, idPermission)
+                    .query(`INSERT INTO IdempotencyRequest (IdempotencyKey, IdLogin, IdPermission)
+                            VALUES (@Key, @IdLogin, @IdPermission)`);
+            }
+
+            await tx.commit();
+            return { idPermission, replayed: false };
+        } catch (error) {
+            try { await tx.rollback(); } catch (rbErr) { console.error('[Tx] rollback error:', rbErr.message); }
+            throw error;
+        }
+    });
+
 export const cancelPermissionById = (id) =>
     withConnection(async (pool) => {
         const result = await pool.request()

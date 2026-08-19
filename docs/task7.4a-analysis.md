@@ -1,15 +1,40 @@
-# Task 7.4A — Análisis BD + API-ULV + contrato `POST /permission`
+# Task 7.4A — Creación server-side de Permission + Authorize (Tipo 1) — ✅ IMPLEMENTADO
 
-Diseño/análisis. **Sin cambios productivos** (7.4A/7.4B intactos). Cierra la regla de
-Pueblo (Tipo 1) usando **API-ULV** como fuente institucional. Verificado en vivo contra
-`https://ulv-api.apps.isdapps.uk` (2026-08-18) y contra la BD UniPass.
+Implementado 2026-08-18 (solo Tipo 1). Tipos 2/3 **sin cambios** (coordinador intacto,
+`PENDING_DOMAIN_DECISION_COORDINATOR_TYPE_2_3`). 7.4B intacto. Verificado en vivo contra
+`https://ulv-api.apps.isdapps.uk` y con tests (unit + integración con BD).
 
 ## 0. Regla de negocio aprobada — Tipo 1 (Pueblo)
 ```
-Alumno → Preceptor → Jefe de trabajo
-Excepción: si preceptorMatricula == jefeMatricula → UN solo eslabón (dedupe).
+Alumno → Jefe de trabajo (orden 1) → Preceptor (orden 2)
+Excepción: si jefeMatricula == preceptorMatricula → UN solo eslabón (dedupe).
 ```
-Comparación por **matrícula institucional** (no nombre/rol/IdLogin).
+Comparación por **matrícula institucional** normalizada (no nombre/rol/IdLogin). El orden
+Jefe→Preceptor es obligatorio (la restricción de que el Preceptor no apruebe antes que el
+Jefe corresponde a 7.4B).
+
+## Archivos (implementación)
+- `src/services/ulvApiService.js` — capa API-ULV (env `ULV_API_URL`/`ULV_API_TIMEOUT_MS`).
+- `src/util/puebloChain.js` — `resolvePuebloChain` (puro, deps inyectadas).
+- `src/repositories/permission.repo.js` — `createPermissionWithChainTx` (transacción),
+  `findPermissionByIdempotencyKey`.
+- `src/repositories/bedroom.repo.js` — `findBedroomIdentificador`.
+- `src/controllers/permission.controller.js` — `createPermission` ramifica: Tipo 1 →
+  `createPermissionPueblo`; Tipos 2/3/4 → `createPermissionLegacy` (comportamiento actual).
+- `database/migrations/009_idempotency.sql` — tabla `IdempotencyRequest` (aplicada).
+- Tests: `tests/pueblo-chain.test.js` (unit), `tests/pueblo-permission.integration.test.js`.
+
+## Indicaciones para Flutter (Tipo 1 Pueblo)
+- `POST /permission` con `IdTipoSalida:1` + Bearer ahora **crea Permission + Authorize** en el
+  backend. Flutter debe **dejar de** ejecutar `POST /authorize` para Pueblo y **dejar de**
+  calcular `idJefe`/`idDepto` desde prefs (origen del crash y de la Permission huérfana 7048).
+- Enviar (recomendado) header **`Idempotency-Key`** (uuid por intento) para evitar duplicados
+  por reintento/timeout. Body: solo datos de la solicitud (fechas, Motivo, IdTipoSalida).
+- Respuesta 201: `{ Id, IdTipoSalida:1, StatusPermission:'Pendiente', cadena:[{orden,IdEmpleado,matricula,rol}] }`.
+  Reintento con el mismo `Idempotency-Key` → 200 `{ ..., replayed:true }`.
+- Manejar los nuevos códigos (409/502/504) mostrando mensaje (no reintentar en 409).
+- **Tipos 2/3 NO cambian** en este pase: siguen con el flujo actual (Flutter orquesta /authorize).
+- `POST /authorize` legado se mantiene por compatibilidad de Tipos 2/3; no eliminar aún.
 
 ## 1. Fuente de cada dato — API-ULV
 
