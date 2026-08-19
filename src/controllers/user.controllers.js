@@ -1,6 +1,7 @@
 // Controlador de usuarios: sesion (login + refresh rotativo con deteccion de reuso,
 // logout, verify), password, busquedas, cargo delegado, token FCM y documentacion.
 import { hashData, VerifyHashData } from '../util/hashData.js';
+import { validatePassword } from '../util/passwordPolicy.js';
 import {
     generateAccessToken,
     generateRefreshToken,
@@ -235,8 +236,10 @@ export const putMePassword = async (req, res) => {
         if (!actual || !nueva) {
             return res.status(400).json({ message: 'actual y nueva son obligatorias', code: 'MISSING_FIELDS' });
         }
-        if (String(nueva).length < 6) {
-            return res.status(400).json({ message: 'La nueva contraseña debe tener al menos 6 caracteres', code: 'WEAK_PASSWORD' });
+        // Task 7.1.B: política unificada (min 8, 1 letra, 1 número) — misma que /password/reset.
+        const policy = validatePassword(nueva);
+        if (!policy.ok) {
+            return res.status(400).json({ message: policy.message, code: 'WEAK_PASSWORD' });
         }
 
         const user = await findUserById(req.user.id);

@@ -21,6 +21,16 @@ export const findUserByMatricula = (matricula) =>
         return result.recordset[0] || null;
     });
 
+// Task 7.1.B: usuario por Correo (para recuperación de contraseña). null si no existe.
+export const findUserByCorreo = (correo) =>
+    withConnection(async (pool) => {
+        const result = await pool
+            .request()
+            .input('Correo', sql.VarChar, correo)
+            .query('SELECT * FROM LoginUniPass WHERE Correo = @Correo');
+        return result.recordset[0] || null;
+    });
+
 export const findUserByMatriculaOrCorreo = (value) =>
     withConnection(async (pool) => {
         const result = await pool

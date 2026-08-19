@@ -58,7 +58,21 @@ Body: { "actual": "<contraseña actual>", "nueva": "<nueva, >=6>" }
 - NO usa Correo. Verificado: 401 / 403 PASSWORD_MISMATCH / 400 MISSING_FIELDS.
 ```
 
-**B) Recuperación (anónima, OTP server-side) — ⏳ BLOQUEADO (falta el contrato en el repo).**
+**B) Recuperación (anónima, OTP server-side) — ✅ IMPLEMENTADO (2026-08-19).**
+`POST /password/forgot` (respuesta genérica, sin enumeración) · `POST /password/verify-otp`
+(valida OTP contra el proveedor → emite `resetToken` opaco, hasheado, un solo uso, 10 min) ·
+`POST /password/reset` (valida resetToken existe/no-expirado/no-usado + política, actualiza hash
+y consume token atómicamente, revoca refresh tokens previos). `OtpProviderService` encapsula el
+proveedor (token de servicio cacheado, renovación 1 vez en 401; secretos solo de env
+`OTP_URL`/`OTP_EMAIL`/`OTP_PASSWORD`, nunca logueados/devueltos). Tabla `PasswordReset` (migración
+010). Política unificada con `/me/password` (min 8, 1 letra, 1 número; `WEAK_PASSWORD`). Códigos:
+`INVALID_OTP`, `RESET_TOKEN_INVALID/EXPIRED/USED`, `WEAK_PASSWORD`, `OTP_PROVIDER_UNAVAILABLE/TIMEOUT`.
+`PUT /password/:Correo` **sigue vivo** (log deprecation) hasta smoke E2E de Flutter.
+🚩 **Riesgo a validar en smoke:** el contrato no confirma que `/email_verification/verifyOTP`
+valide OTPs de RECUPERACIÓN (documentado para alta de cuenta); si el smoke lo rechaza, reportar
+antes de considerar `/forgot_password_app/reset` (§7). Tests con proveedor mockeado (13 casos).
+
+**(histórico) B) — BLOQUEADO (antes de recibir el contrato):**
 Proveedor autorizado (`https://api-otp.apps.isdapps.uk`). **Verificado 2026-08-17: el
 contrato `docs/backend/otp-service-contract.md` NO está en este repo** (`docs/backend/` no
 existe). No implemento las llamadas al proveedor sin sus payloads/headers/respuestas reales

@@ -12,6 +12,7 @@ import pointRoutes from "./routes/point.routes.js"
 import positionRoutes from "./routes/position.routes.js"
 import checkerGrantRoutes from "./routes/checkerGrant.routes.js"
 import adminRoutes from "./routes/admin.routes.js"
+import passwordRoutes from "./routes/password.routes.js"
 import morgan from 'morgan';
 
 
@@ -48,5 +49,7 @@ app.use(positionRoutes);
 app.use(checkerGrantRoutes);
 
 app.use(adminRoutes);
+
+app.use(passwordRoutes);
 
 export default app;
