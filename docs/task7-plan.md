@@ -58,11 +58,19 @@ Body: { "actual": "<contraseña actual>", "nueva": "<nueva, >=6>" }
 - NO usa Correo. Verificado: 401 / 403 PASSWORD_MISMATCH / 400 MISSING_FIELDS.
 ```
 
-**B) Recuperación (anónima, OTP server-side) — ✅ IMPLEMENTADO (2026-08-19).**
-`POST /password/forgot` (respuesta genérica, sin enumeración) · `POST /password/verify-otp`
-(valida OTP contra el proveedor → emite `resetToken` opaco, hasheado, un solo uso, 10 min) ·
-`POST /password/reset` (valida resetToken existe/no-expirado/no-usado + política, actualiza hash
-y consume token atómicamente, revoca refresh tokens previos). `OtpProviderService` encapsula el
+**B) Recuperación (anónima, OTP server-side) — ✅ IMPLEMENTADO; identidad pública por MATRÍCULA (2026-08-19).**
+Contrato público UniPass ↔ Flutter usa **matrícula** (no email). El backend resuelve
+matrícula → cuenta UniPass (`LoginUniPass`, IdLogin) → **correo institucional autoritativo
+vía API-ULV** (`UlvApiService.getInstitutionalEmail`; `LoginUniPass.Correo` NO se usa: audit
+mostró que está stale/erróneo en empleados). El proveedor OTP externo **no cambia** (sigue
+recibiendo email). Flutter nunca resuelve ni recibe el correo.
+- `POST /password/forgot { matricula }` → 200 genérico (anti-enumeración; no revela cuenta/email).
+- `POST /password/verify-otp { matricula, otp }` → valida OTP contra el proveedor → emite
+  `resetToken` opaco (hasheado, single-use, 10 min) **ligado al IdLogin**. Matrícula inexistente
+  ⇒ misma respuesta que OTP inválido (`INVALID_OTP`).
+- `POST /password/reset { resetToken, nueva }` (**sin cambios**): valida resetToken
+  existe/no-expirado/no-usado + política, actualiza hash y consume token atómicamente, revoca
+  refresh tokens previos. Autoridad: resetToken → IdLogin (no matrícula/email/otp aquí). `OtpProviderService` encapsula el
 proveedor (token de servicio cacheado, renovación 1 vez en 401; secretos solo de env
 `OTP_URL`/`OTP_EMAIL`/`OTP_PASSWORD`, nunca logueados/devueltos). Tabla `PasswordReset` (migración
 010). Política unificada con `/me/password` (min 8, 1 letra, 1 número; `WEAK_PASSWORD`). Códigos:

@@ -29,6 +29,23 @@ const getJson = async (path) => {
     return res.json().catch(() => null);
 };
 
+// Task 7.1.B: correo institucional AUTORITATIVO por matrícula (para recuperación).
+// Fuente correcta (LoginUniPass.Correo puede estar stale/erróneo, sobre todo en empleados).
+// Devuelve el email o null (no encontrado). Lanza UlvApiError en caída de transporte.
+// Maneja las formas del proveedor: Data.student[] (CORREO_INSTITUCIONAL) / data.employee[]
+// (EMAIl_INSTITUCIONAL, con el typo del proveedor).
+export const getInstitutionalEmail = async (matricula) => {
+    const raw = await getJson(`/api/datos/${encodeURIComponent(matricula)}`);
+    if (!raw) return null;
+    const D = raw.Data || raw.data || {};
+    const s = (D.student || [])[0];
+    const e = (D.employee || [])[0];
+    const email = (s && s.CORREO_INSTITUCIONAL)
+        || (e && (e.EMAIl_INSTITUCIONAL || e.EMAIL_INSTITUCIONAL || e.CORREO_INSTITUCIONAL))
+        || null;
+    return email ? String(email).trim() : null;
+};
+
 // GET /api/datos/:matricula -> { type, work[] } (work: [{ "ID DEPTO", "DEPARTAMENTO", "ID JEFE", ... }])
 export const getStudentData = async (matricula) => {
     const data = await getJson(`/api/datos/${encodeURIComponent(matricula)}`);
