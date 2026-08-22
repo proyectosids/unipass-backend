@@ -162,7 +162,7 @@ enforce de orden 1→4 (Salida Dorm → Salida Caseta → Regreso Caseta → Reg
 
 ## 8. Persistencia y migraciones
 
-- **BD:** SQL Server (`UNIPASS`). 17 tablas; tabla de usuarios real: **`LoginUniPass`**. Detalle y
+- **BD:** SQL Server (`UNIPASS`). 15 tablas; tabla de usuarios real: **`LoginUniPass`**. Detalle y
   diagrama en [04-diagrama-base-de-datos.md](04-diagrama-base-de-datos.md).
 - **Migraciones:** `database/migrations/*.sql`, **idempotentes** (guardas `IF NOT EXISTS`), aplicadas con
   `node scripts/run-sql.js <archivo>` (divide por `GO`). Van de `001` (CheckerGrant) a `010` (PasswordReset).

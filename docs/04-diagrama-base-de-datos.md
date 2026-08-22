@@ -1,7 +1,7 @@
 # UniPass API — Diagrama de base de datos
 
 Modelo de datos real de la BD **`UNIPASS`** (SQL Server), extraído en vivo del esquema
-(`c492ca6`): **17 tablas, 15 foreign keys**. La tabla de usuarios es **`LoginUniPass`**
+(`c492ca6`): **15 tablas, 15 foreign keys**. La tabla de usuarios es **`LoginUniPass`**
 (el archivo `db.sql` del repo está desactualizado; esta es la fuente de verdad).
 Ver también [03-arquitectura.md](03-arquitectura.md) y [ENDPOINTS.md](ENDPOINTS.md).
 
