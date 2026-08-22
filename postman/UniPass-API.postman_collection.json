@@ -1,0 +1,190 @@
+{
+  "info": {
+    "name": "UniPass API",
+    "description": "Colección completa de la API UniPass (58 endpoints). Estado c492ca6.\n\nVariables (Collection > Variables):\n- baseUrl: http://localhost:3000 (o http://192.168.100.168:3000)\n- accessToken / refreshToken: se autollenan al correr 'Login'.\n- resetToken: se autollena al correr 'verify-otp'.\n- Demás (idLogin, matricula, etc.): ajústalas a tus datos.\n\nEndpoints protegidos usan Bearer {{accessToken}}. Corre 'Login' primero.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:3000" },
+    { "key": "accessToken", "value": "" },
+    { "key": "refreshToken", "value": "" },
+    { "key": "resetToken", "value": "" },
+    { "key": "matricula", "value": "221068" },
+    { "key": "idLogin", "value": "1" },
+    { "key": "idPermission", "value": "7069" },
+    { "key": "idCheck", "value": "4037" },
+    { "key": "idGrant", "value": "1" },
+    { "key": "idDormitorio", "value": "4" },
+    { "key": "nombre", "value": "IRVING" }
+  ],
+  "item": [
+    {
+      "name": "Sesión y usuarios",
+      "item": [
+        {
+          "name": "Login",
+          "event": [
+            { "listen": "test", "script": { "type": "text/javascript", "exec": [
+              "const j = pm.response.json();",
+              "if (j.accessToken) pm.collectionVariables.set('accessToken', j.accessToken);",
+              "if (j.refreshToken) pm.collectionVariables.set('refreshToken', j.refreshToken);"
+            ] } }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [ { "key": "Content-Type", "value": "application/json" } ],
+            "body": { "mode": "raw", "raw": "{\n  \"Matricula\": \"{{matricula}}\",\n  \"Contraseña\": \"TU_PASSWORD\"\n}" },
+            "url": { "raw": "{{baseUrl}}/login", "host": ["{{baseUrl}}"], "path": ["login"] }
+          }
+        },
+        {
+          "name": "Refresh token",
+          "event": [ { "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "const j = pm.response.json();",
+            "if (j.accessToken) pm.collectionVariables.set('accessToken', j.accessToken);",
+            "if (j.refreshToken) pm.collectionVariables.set('refreshToken', j.refreshToken);"
+          ] } } ],
+          "request": {
+            "method": "POST",
+            "header": [ { "key": "Content-Type", "value": "application/json" } ],
+            "body": { "mode": "raw", "raw": "{\n  \"refreshToken\": \"{{refreshToken}}\"\n}" },
+            "url": { "raw": "{{baseUrl}}/refresh-token", "host": ["{{baseUrl}}"], "path": ["refresh-token"] }
+          }
+        },
+        {
+          "name": "Logout",
+          "request": {
+            "auth": { "type": "bearer", "bearer": [ { "key": "token", "value": "{{accessToken}}" } ] },
+            "method": "POST",
+            "header": [ { "key": "Content-Type", "value": "application/json" } ],
+            "body": { "mode": "raw", "raw": "{\n  \"refreshToken\": \"{{refreshToken}}\"\n}" },
+            "url": { "raw": "{{baseUrl}}/logout", "host": ["{{baseUrl}}"], "path": ["logout"] }
+          }
+        },
+        {
+          "name": "Verify token",
+          "request": {
+            "auth": { "type": "bearer", "bearer": [ { "key": "token", "value": "{{accessToken}}" } ] },
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/verifyToken", "host": ["{{baseUrl}}"], "path": ["verifyToken"] }
+          }
+        },
+        {
+          "name": "Register",
+          "request": {
+            "method": "POST",
+            "header": [ { "key": "Content-Type", "value": "application/json" } ],
+            "body": { "mode": "raw", "raw": "{\n  \"Matricula\": \"230001\",\n  \"Contraseña\": \"abc12345\",\n  \"Correo\": \"alumno@ulv.edu.mx\",\n  \"Nombre\": \"Ana\",\n  \"Apellidos\": \"Pérez\",\n  \"TipoUser\": \"ALUMNO\",\n  \"Sexo\": \"F\",\n  \"FechaNacimiento\": \"2004-05-12\",\n  \"Celular\": \"9611234567\",\n  \"Dormitorio\": 1\n}" },
+            "url": { "raw": "{{baseUrl}}/register", "host": ["{{baseUrl}}"], "path": ["register"] }
+          }
+        },
+        { "name": "Get user by IdLogin", "request": { "method": "GET", "url": { "raw": "{{baseUrl}}/user/{{idLogin}}", "host": ["{{baseUrl}}"], "path": ["user", "{{idLogin}}"] } } },
+        { "name": "Get user by matrícula", "request": { "method": "GET", "url": { "raw": "{{baseUrl}}/userMatricula/{{matricula}}", "host": ["{{baseUrl}}"], "path": ["userMatricula", "{{matricula}}"] } } },
+        { "name": "Buscar user (exacto)", "request": { "method": "GET", "url": { "raw": "{{baseUrl}}/buscarUser/{{nombre}}", "host": ["{{baseUrl}}"], "path": ["buscarUser", "{{nombre}}"] } } },
+        { "name": "User checks (legado)", "request": { "method": "GET", "url": { "raw": "{{baseUrl}}/userChecks/correo@ulv.edu.mx", "host": ["{{baseUrl}}"], "path": ["userChecks", "correo@ulv.edu.mx"] } } },
+        { "name": "Cambiar cargo", "request": { "method": "PUT", "header": [ { "key": "Content-Type", "value": "application/json" } ], "body": { "mode": "raw", "raw": "{\n  \"IdCargoDelegado\": 7\n}" }, "url": { "raw": "{{baseUrl}}/cambiarCargo/{{matricula}}", "host": ["{{baseUrl}}"], "path": ["cambiarCargo", "{{matricula}}"] } } },
+        { "name": "Terminar cargo", "request": { "method": "PUT", "url": { "raw": "{{baseUrl}}/terminarCargo/{{matricula}}", "host": ["{{baseUrl}}"], "path": ["terminarCargo", "{{matricula}}"] } } },
+        { "name": "Ver token FCM", "request": { "method": "GET", "url": { "raw": "{{baseUrl}}/VerToken/{{matricula}}", "host": ["{{baseUrl}}"], "path": ["VerToken", "{{matricula}}"] } } },
+        { "name": "Registrar token dispositivo (🔒)", "request": { "auth": { "type": "bearer", "bearer": [ { "key": "token", "value": "{{accessToken}}" } ] }, "method": "PUT", "header": [ { "key": "Content-Type", "value": "application/json" } ], "body": { "mode": "raw", "raw": "{\n  \"TokenCFM\": \"fcm_token_de_prueba\"\n}" }, "url": { "raw": "{{baseUrl}}/TokenDispositivo/{{matricula}}", "host": ["{{baseUrl}}"], "path": ["TokenDispositivo", "{{matricula}}"] } } },
+        { "name": "Documentación (marcar)", "request": { "method": "PUT", "header": [ { "key": "Content-Type", "value": "application/json" } ], "body": { "mode": "raw", "raw": "{\n  \"StatusDoc\": 1\n}" }, "url": { "raw": "{{baseUrl}}/Documentacion/{{matricula}}", "host": ["{{baseUrl}}"], "path": ["Documentacion", "{{matricula}}"] } } }
+      ]
+    },
+    {
+      "name": "Contraseña",
+      "item": [
+        { "name": "Cambio autenticado /me/password (🔒)", "request": { "auth": { "type": "bearer", "bearer": [ { "key": "token", "value": "{{accessToken}}" } ] }, "method": "PUT", "header": [ { "key": "Content-Type", "value": "application/json" } ], "body": { "mode": "raw", "raw": "{\n  \"actual\": \"PASSWORD_ACTUAL\",\n  \"nueva\": \"NuevaPass123\"\n}" }, "url": { "raw": "{{baseUrl}}/me/password", "host": ["{{baseUrl}}"], "path": ["me", "password"] } } },
+        { "name": "Forgot (por matrícula)", "request": { "method": "POST", "header": [ { "key": "Content-Type", "value": "application/json" } ], "body": { "mode": "raw", "raw": "{\n  \"matricula\": \"{{matricula}}\"\n}" }, "url": { "raw": "{{baseUrl}}/password/forgot", "host": ["{{baseUrl}}"], "path": ["password", "forgot"] } } },
+        { "name": "Verify OTP (por matrícula)", "event": [ { "listen": "test", "script": { "type": "text/javascript", "exec": [ "const j = pm.response.json();", "if (j.resetToken) pm.collectionVariables.set('resetToken', j.resetToken);" ] } } ], "request": { "method": "POST", "header": [ { "key": "Content-Type", "value": "application/json" } ], "body": { "mode": "raw", "raw": "{\n  \"matricula\": \"{{matricula}}\",\n  \"otp\": \"1234\"\n}" }, "url": { "raw": "{{baseUrl}}/password/verify-otp", "host": ["{{baseUrl}}"], "path": ["password", "verify-otp"] } } },
+        { "name": "Reset", "request": { "method": "POST", "header": [ { "key": "Content-Type", "value": "application/json" } ], "body": { "mode": "raw", "raw": "{\n  \"resetToken\": \"{{resetToken}}\",\n  \"nueva\": \"NuevaPass123\"\n}" }, "url": { "raw": "{{baseUrl}}/password/reset", "host": ["{{baseUrl}}"], "path": ["password", "reset"] } } },
+        { "name": "Password por correo (LEGADO)", "request": { "method": "PUT", "header": [ { "key": "Content-Type", "value": "application/json" } ], "body": { "mode": "raw", "raw": "{\n  \"NewPassword\": \"NuevaPass123\"\n}" }, "url": { "raw": "{{baseUrl}}/password/correo@ulv.edu.mx", "host": ["{{baseUrl}}"], "path": ["password", "correo@ulv.edu.mx"] } } }
+      ]
+    },
+    {
+      "name": "Permisos de salida",
+      "item": [
+        { "name": "Crear permiso (🔒)", "request": { "auth": { "type": "bearer", "bearer": [ { "key": "token", "value": "{{accessToken}}" } ] }, "method": "POST", "header": [ { "key": "Content-Type", "value": "application/json" }, { "key": "Idempotency-Key", "value": "{{$guid}}" } ], "body": { "mode": "raw", "raw": "{\n  \"FechaSolicitada\": \"2026-08-22T10:00:00\",\n  \"FechaSalida\": \"2026-08-23T09:00:00\",\n  \"FechaRegreso\": \"2026-08-23T18:00:00\",\n  \"StatusPermission\": \"Pendiente\",\n  \"Motivo\": \"Trámite\",\n  \"IdTipoSalida\": 1,\n  \"MedioSalida\": \"Autobús\"\n}" }, "url": { "raw": "{{baseUrl}}/permission", "host": ["{{baseUrl}}"], "path": ["permission"] } } },
+        { "name": "Historial del alumno (paginado)", "request": { "method": "GET", "url": { "raw": "{{baseUrl}}/permission/{{idLogin}}?page=1&limit=10", "host": ["{{baseUrl}}"], "path": ["permission", "{{idLogin}}"], "query": [ { "key": "page", "value": "1" }, { "key": "limit", "value": "10" } ] } } },
+        { "name": "Cancelar permiso (🔒 dueño)", "request": { "auth": { "type": "bearer", "bearer": [ { "key": "token", "value": "{{accessToken}}" } ] }, "method": "PUT", "url": { "raw": "{{baseUrl}}/permission/{{idPermission}}", "host": ["{{baseUrl}}"], "path": ["permission", "{{idPermission}}"] } } },
+        { "name": "Eliminar permiso (🔒ADMIN)", "request": { "auth": { "type": "bearer", "bearer": [ { "key": "token", "value": "{{accessToken}}" } ] }, "method": "DELETE", "url": { "raw": "{{baseUrl}}/permission/{{idPermission}}", "host": ["{{baseUrl}}"], "path": ["permission", "{{idPermission}}"] } } },
+        { "name": "Valorar permiso (resolución final)", "request": { "method": "PUT", "header": [ { "key": "Content-Type", "value": "application/json" } ], "body": { "mode": "raw", "raw": "{\n  \"StatusPermission\": \"Aprobada\",\n  \"Observaciones\": \"\"\n}" }, "url": { "raw": "{{baseUrl}}/permissionValorado/{{idPermission}}", "host": ["{{baseUrl}}"], "path": ["permissionValorado", "{{idPermission}}"] } } },
+        { "name": "Bandeja preceptor", "request": { "method": "GET", "url": { "raw": "{{baseUrl}}/PermissionsPreceptor/{{idLogin}}", "host": ["{{baseUrl}}"], "path": ["PermissionsPreceptor", "{{idLogin}}"] } } },
+        { "name": "Bandeja empleado", "request": { "method": "GET", "url": { "raw": "{{baseUrl}}/permissionsEmployee/{{idLogin}}", "host": ["{{baseUrl}}"], "path": ["permissionsEmployee", "{{idLogin}}"] } } },
+        { "name": "Top Student", "request": { "method": "GET", "url": { "raw": "{{baseUrl}}/permissionTop/Student/{{idLogin}}", "host": ["{{baseUrl}}"], "path": ["permissionTop", "Student", "{{idLogin}}"] } } },
+        { "name": "Top Employee", "request": { "method": "GET", "url": { "raw": "{{baseUrl}}/permissionTop/Employee/{{idLogin}}", "host": ["{{baseUrl}}"], "path": ["permissionTop", "Employee", "{{idLogin}}"] } } },
+        { "name": "Top Preceptor", "request": { "method": "GET", "url": { "raw": "{{baseUrl}}/permissionTop/Preceptor/{{idLogin}}", "host": ["{{baseUrl}}"], "path": ["permissionTop", "Preceptor", "{{idLogin}}"] } } },
+        { "name": "Dashboard permisos", "request": { "method": "GET", "url": { "raw": "{{baseUrl}}/dashboardPermission/{{matricula}}", "host": ["{{baseUrl}}"], "path": ["dashboardPermission", "{{matricula}}"] } } },
+        { "name": "Dashboard documentos", "request": { "method": "GET", "url": { "raw": "{{baseUrl}}/dashboardDocumentos/{{matricula}}", "host": ["{{baseUrl}}"], "path": ["dashboardDocumentos", "{{matricula}}"] } } },
+        { "name": "Filtrar permisos", "request": { "method": "GET", "url": { "raw": "{{baseUrl}}/permissions/filter/{{matricula}}?fechaInicio=2026-08-01&fechaFin=2026-08-31&status=&nombre=&matricula=", "host": ["{{baseUrl}}"], "path": ["permissions", "filter", "{{matricula}}"], "query": [ { "key": "fechaInicio", "value": "2026-08-01" }, { "key": "fechaFin", "value": "2026-08-31" }, { "key": "status", "value": "" }, { "key": "nombre", "value": "" }, { "key": "matricula", "value": "" } ] } } }
+      ]
+    },
+    {
+      "name": "Autorización",
+      "item": [
+        { "name": "Autorizador de salida (2/3)", "request": { "method": "GET", "url": { "raw": "{{baseUrl}}/autorizadorSalida?tipo=2&nivelAcademico=UNIVERSITARIO&sexo=M", "host": ["{{baseUrl}}"], "path": ["autorizadorSalida"], "query": [ { "key": "tipo", "value": "2" }, { "key": "nivelAcademico", "value": "UNIVERSITARIO" }, { "key": "sexo", "value": "M" } ] } } },
+        { "name": "Crear authorize", "request": { "method": "POST", "header": [ { "key": "Content-Type", "value": "application/json" } ], "body": { "mode": "raw", "raw": "{\n  \"IdEmpleado\": 41,\n  \"NoDepto\": 318,\n  \"IdPermission\": {{idPermission}},\n  \"StatusAuthorize\": \"Pendiente\"\n}" }, "url": { "raw": "{{baseUrl}}/authorize", "host": ["{{baseUrl}}"], "path": ["authorize"] } } },
+        { "name": "Autorizar permiso (eslabón)", "request": { "method": "PUT", "header": [ { "key": "Content-Type", "value": "application/json" } ], "body": { "mode": "raw", "raw": "{\n  \"IdEmpleado\": 41,\n  \"StatusAuthorize\": \"Aprobada\"\n}" }, "url": { "raw": "{{baseUrl}}/autorizarPermission/{{idPermission}}", "host": ["{{baseUrl}}"], "path": ["autorizarPermission", "{{idPermission}}"] } } },
+        { "name": "Validar authorize", "request": { "method": "GET", "url": { "raw": "{{baseUrl}}/validarAuthorize/41?IdPermiso={{idPermission}}", "host": ["{{baseUrl}}"], "path": ["validarAuthorize", "41"], "query": [ { "key": "IdPermiso", "value": "{{idPermission}}" } ] } } },
+        { "name": "Progreso authorize", "request": { "method": "GET", "url": { "raw": "{{baseUrl}}/progresAuthorize/{{idPermission}}", "host": ["{{baseUrl}}"], "path": ["progresAuthorize", "{{idPermission}}"] } } },
+        { "name": "Asignar preceptor", "request": { "method": "GET", "url": { "raw": "{{baseUrl}}/asignarPrece/UNIVERSITARIO?Sexo=M", "host": ["{{baseUrl}}"], "path": ["asignarPrece", "UNIVERSITARIO"], "query": [ { "key": "Sexo", "value": "M" } ] } } }
+      ]
+    },
+    {
+      "name": "Checks / checador",
+      "item": [
+        { "name": "Crear check", "request": { "method": "POST", "header": [ { "key": "Content-Type", "value": "application/json" } ], "body": { "mode": "raw", "raw": "{\n  \"Accion\": \"SALIDA\",\n  \"IdPoint\": 3,\n  \"IdPermission\": {{idPermission}}\n}" }, "url": { "raw": "{{baseUrl}}/checks", "host": ["{{baseUrl}}"], "path": ["checks"] } } },
+        { "name": "Checks dormitorio (paso 1)", "request": { "method": "GET", "url": { "raw": "{{baseUrl}}/checksDormitorio/{{idDormitorio}}", "host": ["{{baseUrl}}"], "path": ["checksDormitorio", "{{idDormitorio}}"] } } },
+        { "name": "Checks vigilancia (paso 2)", "request": { "method": "GET", "url": { "raw": "{{baseUrl}}/checksVigilancia", "host": ["{{baseUrl}}"], "path": ["checksVigilancia"] } } },
+        { "name": "Checks vigilancia regreso (paso 3)", "request": { "method": "GET", "url": { "raw": "{{baseUrl}}/checksVigilanciaRegreso", "host": ["{{baseUrl}}"], "path": ["checksVigilanciaRegreso"] } } },
+        { "name": "Checks dormitorio fin (paso 4)", "request": { "method": "GET", "url": { "raw": "{{baseUrl}}/checksDormitorioFin/{{idDormitorio}}", "host": ["{{baseUrl}}"], "path": ["checksDormitorioFin", "{{idDormitorio}}"] } } },
+        { "name": "Confirmar check (🔒)", "request": { "auth": { "type": "bearer", "bearer": [ { "key": "token", "value": "{{accessToken}}" } ] }, "method": "PUT", "header": [ { "key": "Content-Type", "value": "application/json" } ], "body": { "mode": "raw", "raw": "{\n  \"FechaCheck\": \"2026-08-22T09:05:00\",\n  \"Estatus\": \"Confirmada\",\n  \"Observaciones\": \"Ninguna\"\n}" }, "url": { "raw": "{{baseUrl}}/checks/{{idCheck}}", "host": ["{{baseUrl}}"], "path": ["checks", "{{idCheck}}"] } } }
+      ]
+    },
+    {
+      "name": "Capabilities (checador / supervisor)",
+      "item": [
+        { "name": "Get capabilities (🔒)", "request": { "auth": { "type": "bearer", "bearer": [ { "key": "token", "value": "{{accessToken}}" } ] }, "method": "GET", "url": { "raw": "{{baseUrl}}/getCapabilities", "host": ["{{baseUrl}}"], "path": ["getCapabilities"] } } },
+        { "name": "Otorgar CHECKER (🔒)", "request": { "auth": { "type": "bearer", "bearer": [ { "key": "token", "value": "{{accessToken}}" } ] }, "method": "POST", "header": [ { "key": "Content-Type", "value": "application/json" } ], "body": { "mode": "raw", "raw": "{\n  \"IdLogin\": {{idLogin}},\n  \"Scope\": \"AMBOS\",\n  \"Vigencia\": \"PERMANENTE\"\n}" }, "url": { "raw": "{{baseUrl}}/checkerGrant", "host": ["{{baseUrl}}"], "path": ["checkerGrant"] } } },
+        { "name": "Listar CHECKER grants (🔒)", "request": { "auth": { "type": "bearer", "bearer": [ { "key": "token", "value": "{{accessToken}}" } ] }, "method": "GET", "url": { "raw": "{{baseUrl}}/checkerGrants", "host": ["{{baseUrl}}"], "path": ["checkerGrants"] } } },
+        { "name": "CHECKER grants por usuario (🔒)", "request": { "auth": { "type": "bearer", "bearer": [ { "key": "token", "value": "{{accessToken}}" } ] }, "method": "GET", "url": { "raw": "{{baseUrl}}/checkerGrantsByUser/{{idLogin}}", "host": ["{{baseUrl}}"], "path": ["checkerGrantsByUser", "{{idLogin}}"] } } },
+        { "name": "Activar/desactivar CHECKER (🔒)", "request": { "auth": { "type": "bearer", "bearer": [ { "key": "token", "value": "{{accessToken}}" } ] }, "method": "PUT", "header": [ { "key": "Content-Type", "value": "application/json" } ], "body": { "mode": "raw", "raw": "{\n  \"Activo\": 0\n}" }, "url": { "raw": "{{baseUrl}}/checkerGrant/{{idGrant}}", "host": ["{{baseUrl}}"], "path": ["checkerGrant", "{{idGrant}}"] } } },
+        { "name": "Revocar CHECKER (🔒)", "request": { "auth": { "type": "bearer", "bearer": [ { "key": "token", "value": "{{accessToken}}" } ] }, "method": "DELETE", "url": { "raw": "{{baseUrl}}/checkerGrant/{{idGrant}}", "host": ["{{baseUrl}}"], "path": ["checkerGrant", "{{idGrant}}"] } } },
+        { "name": "Buscar persona asignable (🔒)", "request": { "auth": { "type": "bearer", "bearer": [ { "key": "token", "value": "{{accessToken}}" } ] }, "method": "GET", "url": { "raw": "{{baseUrl}}/buscarPersona/{{nombre}}", "host": ["{{baseUrl}}"], "path": ["buscarPersona", "{{nombre}}"] } } },
+        { "name": "Otorgar SUPERVISOR (🔒ADMIN)", "request": { "auth": { "type": "bearer", "bearer": [ { "key": "token", "value": "{{accessToken}}" } ] }, "method": "POST", "header": [ { "key": "Content-Type", "value": "application/json" } ], "body": { "mode": "raw", "raw": "{\n  \"IdLogin\": {{idLogin}}\n}" }, "url": { "raw": "{{baseUrl}}/supervisorGrant", "host": ["{{baseUrl}}"], "path": ["supervisorGrant"] } } },
+        { "name": "Revocar SUPERVISOR (🔒ADMIN)", "request": { "auth": { "type": "bearer", "bearer": [ { "key": "token", "value": "{{accessToken}}" } ] }, "method": "DELETE", "url": { "raw": "{{baseUrl}}/supervisorGrant/{{idLogin}}", "host": ["{{baseUrl}}"], "path": ["supervisorGrant", "{{idLogin}}"] } } }
+      ]
+    },
+    {
+      "name": "Panel coordinador (admin)",
+      "item": [
+        { "name": "Dashboard (🔒ADMIN|SUP)", "request": { "auth": { "type": "bearer", "bearer": [ { "key": "token", "value": "{{accessToken}}" } ] }, "method": "GET", "url": { "raw": "{{baseUrl}}/admin/dashboard?desde=2026-08-01&hasta=2026-08-31", "host": ["{{baseUrl}}"], "path": ["admin", "dashboard"], "query": [ { "key": "desde", "value": "2026-08-01" }, { "key": "hasta", "value": "2026-08-31" } ] } } },
+        { "name": "Reporte (🔒ADMIN|SUP)", "request": { "auth": { "type": "bearer", "bearer": [ { "key": "token", "value": "{{accessToken}}" } ] }, "method": "GET", "url": { "raw": "{{baseUrl}}/admin/reporte?desde=2026-08-01&hasta=2026-08-31", "host": ["{{baseUrl}}"], "path": ["admin", "reporte"], "query": [ { "key": "desde", "value": "2026-08-01" }, { "key": "hasta", "value": "2026-08-31" } ] } } },
+        { "name": "Observaciones (🔒ADMIN|SUP)", "request": { "auth": { "type": "bearer", "bearer": [ { "key": "token", "value": "{{accessToken}}" } ] }, "method": "GET", "url": { "raw": "{{baseUrl}}/admin/observaciones?desde=2026-08-01&hasta=2026-08-31", "host": ["{{baseUrl}}"], "path": ["admin", "observaciones"], "query": [ { "key": "desde", "value": "2026-08-01" }, { "key": "hasta", "value": "2026-08-31" } ] } } }
+      ]
+    },
+    {
+      "name": "Documentos / expediente",
+      "item": [
+        { "name": "Subir documento (🔒)", "request": { "auth": { "type": "bearer", "bearer": [ { "key": "token", "value": "{{accessToken}}" } ] }, "method": "POST", "body": { "mode": "formdata", "formdata": [ { "key": "Archivo", "type": "file", "src": [] }, { "key": "IdDocumento", "value": "2", "type": "text" } ] }, "url": { "raw": "{{baseUrl}}/doctosMul", "host": ["{{baseUrl}}"], "path": ["doctosMul"] } } },
+        { "name": "Actualizar perfil/doc (🔒)", "request": { "auth": { "type": "bearer", "bearer": [ { "key": "token", "value": "{{accessToken}}" } ] }, "method": "PUT", "body": { "mode": "formdata", "formdata": [ { "key": "Archivo", "type": "file", "src": [] }, { "key": "IdDocumento", "value": "2", "type": "text" } ] }, "url": { "raw": "{{baseUrl}}/doctosMul/updateProfile", "host": ["{{baseUrl}}"], "path": ["doctosMul", "updateProfile"] } } },
+        { "name": "Borrar documento propio (🔒)", "request": { "auth": { "type": "bearer", "bearer": [ { "key": "token", "value": "{{accessToken}}" } ] }, "method": "DELETE", "header": [ { "key": "Content-Type", "value": "application/json" } ], "body": { "mode": "raw", "raw": "{\n  \"IdDoctos\": 512\n}" }, "url": { "raw": "{{baseUrl}}/doctosMul/{{idLogin}}", "host": ["{{baseUrl}}"], "path": ["doctosMul", "{{idLogin}}"] } } },
+        { "name": "Perfil/doc puntual", "request": { "method": "GET", "url": { "raw": "{{baseUrl}}/doctosProfile/{{idLogin}}?IdDocumento=1", "host": ["{{baseUrl}}"], "path": ["doctosProfile", "{{idLogin}}"], "query": [ { "key": "IdDocumento", "value": "1" } ] } } },
+        { "name": "Documentos del usuario", "request": { "method": "GET", "url": { "raw": "{{baseUrl}}/doctos/{{idLogin}}", "host": ["{{baseUrl}}"], "path": ["doctos", "{{idLogin}}"] } } },
+        { "name": "Expediente por dormitorio", "request": { "method": "GET", "url": { "raw": "{{baseUrl}}/getExpediente/{{idDormitorio}}", "host": ["{{baseUrl}}"], "path": ["getExpediente", "{{idDormitorio}}"] } } },
+        { "name": "Archivos filtrados", "request": { "method": "GET", "url": { "raw": "{{baseUrl}}/getArchivos/{{idDormitorio}}", "host": ["{{baseUrl}}"], "path": ["getArchivos", "{{idDormitorio}}"] } } },
+        { "name": "Aprobar documento", "request": { "method": "PUT", "header": [ { "key": "Content-Type", "value": "application/json" } ], "body": { "mode": "raw", "raw": "{\n  \"IdDocumento\": 2\n}" }, "url": { "raw": "{{baseUrl}}/statusRevision/{{idLogin}}", "host": ["{{baseUrl}}"], "path": ["statusRevision", "{{idLogin}}"] } } },
+        { "name": "Rechazar documento", "request": { "method": "PUT", "header": [ { "key": "Content-Type", "value": "application/json" } ], "body": { "mode": "raw", "raw": "{\n  \"IdDocumento\": 2,\n  \"Motivo\": \"Documento ilegible\",\n  \"Comentario\": \"Vuelve a escanearlo\",\n  \"MatriculaPreceptor\": \"41\"\n}" }, "url": { "raw": "{{baseUrl}}/doctosMul/reject/{{idLogin}}", "host": ["{{baseUrl}}"], "path": ["doctosMul", "reject", "{{idLogin}}"] } } }
+      ]
+    },
+    {
+      "name": "Dormitorios / puntos / cargos",
+      "item": [
+        { "name": "Dormitorio por sexo/nivel", "request": { "method": "GET", "url": { "raw": "{{baseUrl}}/dormitorio/M/UNIVERSITARIO", "host": ["{{baseUrl}}"], "path": ["dormitorio", "M", "UNIVERSITARIO"] } } },
+        { "name": "Puntos de un tipo de salida", "request": { "method": "GET", "url": { "raw": "{{baseUrl}}/getPoints/2", "host": ["{{baseUrl}}"], "path": ["getPoints", "2"] } } },
+        { "name": "Info cargo (por suplente)", "request": { "method": "GET", "url": { "raw": "{{baseUrl}}/InfoCargo/{{matricula}}", "host": ["{{baseUrl}}"], "path": ["InfoCargo", "{{matricula}}"] } } },
+        { "name": "Info delegado (por encargado)", "request": { "method": "GET", "url": { "raw": "{{baseUrl}}/InfoDelegado/{{matricula}}", "host": ["{{baseUrl}}"], "path": ["InfoDelegado", "{{matricula}}"] } } },
+        { "name": "Crear position (suplencia)", "request": { "method": "POST", "header": [ { "key": "Content-Type", "value": "application/json" } ], "body": { "mode": "raw", "raw": "{\n  \"MatriculaEncargado\": \"41\",\n  \"ClassUser\": \"PRECEPTOR\",\n  \"Asignado\": \"273\"\n}" }, "url": { "raw": "{{baseUrl}}/createPosition", "host": ["{{baseUrl}}"], "path": ["createPosition"] } } },
+        { "name": "Activar cargo", "request": { "method": "PUT", "header": [ { "key": "Content-Type", "value": "application/json" } ], "body": { "mode": "raw", "raw": "{\n  \"Activo\": 1\n}" }, "url": { "raw": "{{baseUrl}}/activarCargo/1", "host": ["{{baseUrl}}"], "path": ["activarCargo", "1"] } } }
+      ]
+    }
+  ]
+}
