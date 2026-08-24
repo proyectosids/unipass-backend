@@ -14,7 +14,7 @@ export const createOrReactivateGrant = ({ idLogin, tipo, idDormitorio = null, sc
             .input('IdLogin', sql.Int, idLogin)
             .input('Tipo', sql.NVarChar(12), tipo)
             .input('IdDormitorio', sql.Int, idDormitorio)
-            .query(`SELECT IdGrant FROM CheckerGrant
+            .query(`SELECT IdGrant FROM UNIPASS.CheckerGrant
                     WHERE IdLogin = @IdLogin AND Tipo = @Tipo
                       AND ((IdDormitorio IS NULL AND @IdDormitorio IS NULL) OR IdDormitorio = @IdDormitorio)`);
 
@@ -26,11 +26,11 @@ export const createOrReactivateGrant = ({ idLogin, tipo, idDormitorio = null, sc
                 .input('Vigencia', sql.NVarChar(12), vigencia)
                 .input('FechaExpira', sql.DateTime, fechaExpira)
                 .input('AsignadoPor', sql.Int, asignadoPor)
-                .query(`UPDATE CheckerGrant
+                .query(`UPDATE UNIPASS.CheckerGrant
                         SET Scope = @Scope, Vigencia = @Vigencia, FechaExpira = @FechaExpira,
                             AsignadoPor = @AsignadoPor, Activo = 1
                         WHERE IdGrant = @IdGrant;
-                        SELECT * FROM CheckerGrant WHERE IdGrant = @IdGrant;`);
+                        SELECT * FROM UNIPASS.CheckerGrant WHERE IdGrant = @IdGrant;`);
             return { grant: updated.recordset[0], reactivated: true };
         }
 
@@ -42,9 +42,9 @@ export const createOrReactivateGrant = ({ idLogin, tipo, idDormitorio = null, sc
             .input('Vigencia', sql.NVarChar(12), vigencia)
             .input('FechaExpira', sql.DateTime, fechaExpira)
             .input('AsignadoPor', sql.Int, asignadoPor)
-            .query(`INSERT INTO CheckerGrant (IdLogin, Tipo, IdDormitorio, Scope, AsignadoPor, Vigencia, FechaExpira)
+            .query(`INSERT INTO UNIPASS.CheckerGrant (IdLogin, Tipo, IdDormitorio, Scope, AsignadoPor, Vigencia, FechaExpira)
                     VALUES (@IdLogin, @Tipo, @IdDormitorio, @Scope, @AsignadoPor, @Vigencia, @FechaExpira);
-                    SELECT * FROM CheckerGrant WHERE IdGrant = SCOPE_IDENTITY();`);
+                    SELECT * FROM UNIPASS.CheckerGrant WHERE IdGrant = SCOPE_IDENTITY();`);
         return { grant: inserted.recordset[0], reactivated: false };
     });
 
@@ -57,7 +57,7 @@ export const findActiveGrantByTipo = (idLogin, tipo, idDormitorio = null) =>
             .input('Tipo', sql.NVarChar(12), tipo)
             .input('IdDormitorio', sql.Int, idDormitorio);
         const dormFilter = tipo === 'Dormitorio' ? 'AND IdDormitorio = @IdDormitorio' : '';
-        const result = await req.query(`SELECT TOP 1 * FROM CheckerGrant
+        const result = await req.query(`SELECT TOP 1 * FROM UNIPASS.CheckerGrant
                     WHERE IdLogin = @IdLogin AND Tipo = @Tipo ${dormFilter} AND ${VIGENTE}`);
         return result.recordset[0] || null;
     });
@@ -68,7 +68,7 @@ export const findCapabilitiesByLogin = (idLogin) =>
     withConnection(async (pool) => {
         const result = await pool.request()
             .input('IdLogin', sql.Int, idLogin)
-            .query(`SELECT Capability, Tipo, IdDormitorio, Scope FROM CheckerGrant
+            .query(`SELECT Capability, Tipo, IdDormitorio, Scope FROM UNIPASS.CheckerGrant
                     WHERE IdLogin = @IdLogin AND ${VIGENTE}`);
         return result.recordset.map((r) => {
             if (r.Capability === 'SUPERVISOR') return { type: 'SUPERVISOR' };
@@ -87,7 +87,7 @@ export const createOrReactivateSupervisorGrant = (idLogin, asignadoPor) =>
     withConnection(async (pool) => {
         const existing = await pool.request()
             .input('IdLogin', sql.Int, idLogin)
-            .query(`SELECT IdGrant FROM CheckerGrant
+            .query(`SELECT IdGrant FROM UNIPASS.CheckerGrant
                     WHERE IdLogin = @IdLogin AND Capability = 'SUPERVISOR'`);
 
         if (existing.recordset.length > 0) {
@@ -95,18 +95,18 @@ export const createOrReactivateSupervisorGrant = (idLogin, asignadoPor) =>
             const updated = await pool.request()
                 .input('IdGrant', sql.Int, idGrant)
                 .input('AsignadoPor', sql.Int, asignadoPor)
-                .query(`UPDATE CheckerGrant SET Activo = 1, AsignadoPor = @AsignadoPor
+                .query(`UPDATE UNIPASS.CheckerGrant SET Activo = 1, AsignadoPor = @AsignadoPor
                         WHERE IdGrant = @IdGrant;
-                        SELECT * FROM CheckerGrant WHERE IdGrant = @IdGrant;`);
+                        SELECT * FROM UNIPASS.CheckerGrant WHERE IdGrant = @IdGrant;`);
             return { grant: updated.recordset[0], reactivated: true };
         }
 
         const inserted = await pool.request()
             .input('IdLogin', sql.Int, idLogin)
             .input('AsignadoPor', sql.Int, asignadoPor)
-            .query(`INSERT INTO CheckerGrant (IdLogin, Capability, Tipo, IdDormitorio, Scope, AsignadoPor, Vigencia, Activo)
+            .query(`INSERT INTO UNIPASS.CheckerGrant (IdLogin, Capability, Tipo, IdDormitorio, Scope, AsignadoPor, Vigencia, Activo)
                     VALUES (@IdLogin, 'SUPERVISOR', NULL, NULL, 'AMBOS', @AsignadoPor, 'PERMANENTE', 1);
-                    SELECT * FROM CheckerGrant WHERE IdGrant = SCOPE_IDENTITY();`);
+                    SELECT * FROM UNIPASS.CheckerGrant WHERE IdGrant = SCOPE_IDENTITY();`);
         return { grant: inserted.recordset[0], reactivated: false };
     });
 
@@ -115,7 +115,7 @@ export const deleteSupervisorGrant = (idLogin) =>
     withConnection(async (pool) => {
         const result = await pool.request()
             .input('IdLogin', sql.Int, idLogin)
-            .query(`DELETE FROM CheckerGrant WHERE IdLogin = @IdLogin AND Capability = 'SUPERVISOR'`);
+            .query(`DELETE FROM UNIPASS.CheckerGrant WHERE IdLogin = @IdLogin AND Capability = 'SUPERVISOR'`);
         return result.rowsAffected[0] > 0;
     });
 
@@ -132,8 +132,8 @@ export const findGrantsScoped = ({ tipo, idDormitorio = null }) =>
         const result = await req.query(`SELECT CG.IdGrant, CG.IdLogin, CG.Tipo, CG.IdDormitorio,
                            CG.Scope, CG.Vigencia, CG.FechaExpira, CG.Activo, CG.AsignadoPor, CG.FechaCreacion,
                            L.Matricula, L.Nombre, L.Apellidos, L.TipoUser
-                    FROM CheckerGrant CG
-                    INNER JOIN LoginUniPass L ON L.IdLogin = CG.IdLogin
+                    FROM UNIPASS.CheckerGrant CG
+                    INNER JOIN UNIPASS.LoginUniPass L ON L.IdLogin = CG.IdLogin
                     WHERE CG.Tipo = @Tipo ${dormFilter} AND CG.Activo = 1
                     ORDER BY CG.FechaCreacion DESC`);
         return result.recordset;
@@ -146,7 +146,7 @@ export const findGrantsByLogin = (idLogin) =>
             .input('IdLogin', sql.Int, idLogin)
             .query(`SELECT IdGrant, IdLogin, Tipo, IdDormitorio, Scope, Vigencia,
                            FechaExpira, Activo, AsignadoPor, FechaCreacion
-                    FROM CheckerGrant
+                    FROM UNIPASS.CheckerGrant
                     WHERE IdLogin = @IdLogin AND Capability = 'CHECKER'
                     ORDER BY FechaCreacion DESC`);
         return result.recordset;
@@ -157,7 +157,7 @@ export const setGrantActivo = (idGrant, activo) =>
         const result = await pool.request()
             .input('IdGrant', sql.Int, idGrant)
             .input('Activo', sql.Bit, activo)
-            .query('UPDATE CheckerGrant SET Activo = @Activo WHERE IdGrant = @IdGrant');
+            .query('UPDATE UNIPASS.CheckerGrant SET Activo = @Activo WHERE IdGrant = @IdGrant');
         return result.rowsAffected[0] > 0;
     });
 
@@ -165,6 +165,6 @@ export const deleteGrant = (idGrant) =>
     withConnection(async (pool) => {
         const result = await pool.request()
             .input('IdGrant', sql.Int, idGrant)
-            .query('DELETE FROM CheckerGrant WHERE IdGrant = @IdGrant');
+            .query('DELETE FROM UNIPASS.CheckerGrant WHERE IdGrant = @IdGrant');
         return result.rowsAffected[0] > 0;
     });

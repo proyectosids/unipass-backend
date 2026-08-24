@@ -8,7 +8,7 @@ export const findBedroomIdentificador = (idBedroom) =>
         const result = await pool
             .request()
             .input('Id', sql.Int, idBedroom)
-            .query('SELECT Identificador FROM Bedroom WHERE IdBedroom = @Id');
+            .query('SELECT Identificador FROM UNIPASS.Bedroom WHERE IdBedroom = @Id');
         return result.recordset[0]?.Identificador ?? null;
     });
 
@@ -18,6 +18,6 @@ export const findBedroomBySexoYNivel = (sexo, nivel) =>
             .request()
             .input('Sexo', sql.VarChar, sexo)
             .input('Nivel', sql.VarChar, nivel)
-            .query('SELECT * FROM Bedroom WHERE NivelDormitorio = @Nivel AND Sexo = @Sexo');
+            .query('SELECT * FROM UNIPASS.Bedroom WHERE NivelDormitorio = @Nivel AND Sexo = @Sexo');
         return result.recordset[0];
     });

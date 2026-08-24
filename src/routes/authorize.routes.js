@@ -4,7 +4,7 @@ import { AdvancePermission, asignarPreceptor, createAuthorize, definirAutorizaci
 const router = Router();
 
 // Resuelve quien autoriza salidas ESPECIAL(2)/A CASA(3) segun el switch
-// AUTORIZADOR_SALIDAS en dbo.Configuracion (COORDINADOR o PRECEPTOR)
+// AUTORIZADOR_SALIDAS en UNIPASS.Configuracion (COORDINADOR o PRECEPTOR)
 router.get("/autorizadorSalida", getAutorizadorSalida);
 
 // Alta de un eslabon de la cadena (idempotente: repetido -> DualRole)

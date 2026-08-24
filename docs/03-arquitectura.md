@@ -162,10 +162,16 @@ enforce de orden 1→4 (Salida Dorm → Salida Caseta → Regreso Caseta → Reg
 
 ## 8. Persistencia y migraciones
 
-- **BD:** SQL Server (`UNIPASS`). 15 tablas; tabla de usuarios real: **`LoginUniPass`**. Detalle y
-  diagrama en [04-diagrama-base-de-datos.md](04-diagrama-base-de-datos.md).
+- **BD:** SQL Server (`UNIPASS`). 15 tablas en el **esquema `UNIPASS`** (referencia `UNIPASS.<Tabla>`);
+  tabla de usuarios real: **`LoginUniPass`**. Detalle y diagrama en
+  [04-diagrama-base-de-datos.md](04-diagrama-base-de-datos.md).
+- **Creación / esquema:** `database/schema/UNIPASS_full_schema.sql` (instalación desde cero: BD +
+  esquema + tablas + descripciones + semillas) y `UNIPASS_migrate_dbo_to_schema.sql` (mover una BD
+  existente de `dbo` al esquema `UNIPASS` sin perder datos). Todas las consultas del código usan
+  el prefijo `UNIPASS.`.
 - **Migraciones:** `database/migrations/*.sql`, **idempotentes** (guardas `IF NOT EXISTS`), aplicadas con
-  `node scripts/run-sql.js <archivo>` (divide por `GO`). Van de `001` (CheckerGrant) a `010` (PasswordReset).
+  `node scripts/run-sql.js <archivo>` (divide por `GO`). `001`–`010`; históricas (en `dbo`), superadas
+  por el script de esquema para instalaciones nuevas.
 - **Conexión:** pool por operación (`withConnection`); transacciones con `sql.Transaction` para flujos
   atómicos (creación Pueblo, reset de contraseña).
 

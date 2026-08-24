@@ -6,6 +6,6 @@ export const findPointsByExitId = (idExit) =>
         const result = await pool
             .request()
             .input('IdSalida', sql.Int, idExit)
-            .query('SELECT * FROM Point WHERE IdExit = @IdSalida');
+            .query('SELECT * FROM UNIPASS.Point WHERE IdExit = @IdSalida');
         return result.recordset;
     });

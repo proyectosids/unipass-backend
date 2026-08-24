@@ -9,8 +9,7 @@ export const findPositionByMatricula = (matricula) =>
         const result = await pool
             .request()
             .input('Id', sql.VarChar, matricula)
-            .query(`SELECT * FROM LoginUniPass INNER JOIN
-                    Position ON LoginUniPass.IdCargoDelegado = Position.IdCargo
+            .query(`SELECT * FROM UNIPASS.LoginUniPass INNER JOIN UNIPASS.Position ON LoginUniPass.IdCargoDelegado = Position.IdCargo
                     WHERE LoginUniPass.Matricula = @Id`);
         return result.recordset[0] || null;
     });
@@ -20,8 +19,7 @@ export const findPositionsByMatriculaEncargado = (matricula) =>
         const result = await pool
             .request()
             .input('Id', sql.VarChar, matricula)
-            .query(`SELECT * FROM LoginUniPass INNER JOIN
-                    Position ON LoginUniPass.IdCargoDelegado = Position.IdCargo
+            .query(`SELECT * FROM UNIPASS.LoginUniPass INNER JOIN UNIPASS.Position ON LoginUniPass.IdCargoDelegado = Position.IdCargo
                     WHERE Position.MatriculaEncargado = @Id`);
         return result.recordset.length > 0 ? result.recordset : null;
     });
@@ -34,7 +32,7 @@ export const createPosition = ({ matriculaEncargado, classUser, asignado }) =>
             .input('ClassUser', sql.VarChar, classUser)
             .input('Asignado', sql.VarChar, asignado)
             .input('Activo', sql.Int, 0)
-            .query(`INSERT INTO Position (MatriculaEncargado, ClassUser, Asignado, Activo)
+            .query(`INSERT INTO UNIPASS.Position (MatriculaEncargado, ClassUser, Asignado, Activo)
                     VALUES (@MatriculaEncargado, @ClassUser, @Asignado, @Activo);
                     SELECT SCOPE_IDENTITY() AS id;`);
 
@@ -44,7 +42,7 @@ export const createPosition = ({ matriculaEncargado, classUser, asignado }) =>
         const created = await pool
             .request()
             .input('id', sql.Int, newId)
-            .query('SELECT * FROM Position WHERE IdCargo = @id');
+            .query('SELECT * FROM UNIPASS.Position WHERE IdCargo = @id');
         return created.recordset[0];
     });
 
@@ -54,6 +52,6 @@ export const updatePositionActivo = (idCargo, activo) =>
             .request()
             .input('Id', sql.VarChar, idCargo)
             .input('Activo', sql.Int, activo)
-            .query('UPDATE Position SET Activo = @Activo WHERE IdCargo = @Id');
+            .query('UPDATE UNIPASS.Position SET Activo = @Activo WHERE IdCargo = @Id');
         return result.rowsAffected[0] > 0;
     });

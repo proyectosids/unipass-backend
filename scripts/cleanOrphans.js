@@ -34,7 +34,7 @@ async function main() {
     let dbPaths = [];
     try {
         pool = await getConnection();
-        const result = await pool.request().query('SELECT Archivo FROM Doctos WHERE Archivo IS NOT NULL');
+        const result = await pool.request().query('SELECT Archivo FROM UNIPASS.Doctos WHERE Archivo IS NOT NULL');
         dbPaths = result.recordset.map(r => basenameFromStored(r.Archivo)).filter(Boolean);
     } finally {
         if (pool) {

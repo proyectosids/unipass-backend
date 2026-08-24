@@ -19,8 +19,8 @@ export async function getMatriculasToNotify(pool, matricula) {
         const result = await pool.request()
             .input('MatriculaOriginal', sql.VarChar, original)
             .query(`SELECT L.Matricula
-                    FROM LoginUniPass L
-                    INNER JOIN Position P ON L.IdCargoDelegado = P.IdCargo
+                    FROM UNIPASS.LoginUniPass L
+                    INNER JOIN UNIPASS.Position P ON L.IdCargoDelegado = P.IdCargo
                     WHERE P.MatriculaEncargado = @MatriculaOriginal
                       AND P.Activo = 1`);
         for (const row of result.recordset) {

@@ -34,7 +34,7 @@ export const createCheckPoint = ({ statusCheck = 'Pendiente', accion, idPoint, i
             .input('Accion', sql.VarChar, accion)
             .input('IdPoint', sql.Int, idPoint)
             .input('IdPermission', sql.Int, idPermission)
-            .query(`INSERT INTO CheckPoints (Estatus, Accion, IdPoint, IdPermission)
+            .query(`INSERT INTO UNIPASS.CheckPoints (Estatus, Accion, IdPoint, IdPermission)
                     VALUES (@StatusCheck, @Accion, @IdPoint, @IdPermission);
                     SELECT SCOPE_IDENTITY() AS IdCheck;`);
         return result.recordset[0].IdCheck;
@@ -46,11 +46,11 @@ export const findPendingChecksDormitorioSalida = (dormitorio) =>
             .request()
             .input('Dormitorio', sql.Int, dormitorio)
             .query(`SELECT ${CHECK_FIELDS}
-                    FROM Permission
-                    JOIN TypeExit ON Permission.IdTipoSalida = TypeExit.IdTypeExit
-                    JOIN LoginUniPass ON Permission.IdUser = LoginUniPass.IdLogin
-                    JOIN CheckPoints ON Permission.IdPermission = CheckPoints.IdPermission
-                    JOIN Point ON CheckPoints.IdPoint = Point.IdPoint
+                    FROM UNIPASS.Permission
+                    JOIN UNIPASS.TypeExit ON Permission.IdTipoSalida = TypeExit.IdTypeExit
+                    JOIN UNIPASS.LoginUniPass ON Permission.IdUser = LoginUniPass.IdLogin
+                    JOIN UNIPASS.CheckPoints ON Permission.IdPermission = CheckPoints.IdPermission
+                    JOIN UNIPASS.Point ON CheckPoints.IdPoint = Point.IdPoint
                     WHERE Permission.StatusPermission = 'Aprobada'
                       AND Point.NombrePunto = 'Dormitorio'
                       AND CheckPoints.Estatus = 'Pendiente'
@@ -68,14 +68,14 @@ export const findPendingChecksDormitorioRetorno = (dormitorio) =>
             .query(`WITH OrderedCheckPoints AS (
                         SELECT CheckPoints.*,
                                ROW_NUMBER() OVER (PARTITION BY IdPermission ORDER BY FechaCheck) AS CheckNumber
-                        FROM CheckPoints
+                        FROM UNIPASS.CheckPoints
                     )
                     SELECT ${CHECK_FIELDS}
-                    FROM Permission
-                    JOIN TypeExit ON Permission.IdTipoSalida = TypeExit.IdTypeExit
-                    JOIN LoginUniPass ON Permission.IdUser = LoginUniPass.IdLogin
-                    JOIN CheckPoints ON Permission.IdPermission = CheckPoints.IdPermission
-                    JOIN Point ON CheckPoints.IdPoint = Point.IdPoint
+                    FROM UNIPASS.Permission
+                    JOIN UNIPASS.TypeExit ON Permission.IdTipoSalida = TypeExit.IdTypeExit
+                    JOIN UNIPASS.LoginUniPass ON Permission.IdUser = LoginUniPass.IdLogin
+                    JOIN UNIPASS.CheckPoints ON Permission.IdPermission = CheckPoints.IdPermission
+                    JOIN UNIPASS.Point ON CheckPoints.IdPoint = Point.IdPoint
                     WHERE Permission.StatusPermission = 'Aprobada'
                       AND Point.NombrePunto = 'Dormitorio'
                       AND LoginUniPass.Dormitorio = @Dormitorio
@@ -103,23 +103,23 @@ export const findPendingChecksVigilanciaSalida = () =>
         const result = await pool
             .request()
             .query(`SELECT ${CHECK_FIELDS}
-                    FROM Permission
-                    JOIN TypeExit ON Permission.IdTipoSalida = TypeExit.IdTypeExit
-                    JOIN LoginUniPass ON Permission.IdUser = LoginUniPass.IdLogin
-                    JOIN CheckPoints ON Permission.IdPermission = CheckPoints.IdPermission
-                    JOIN Point ON CheckPoints.IdPoint = Point.IdPoint
+                    FROM UNIPASS.Permission
+                    JOIN UNIPASS.TypeExit ON Permission.IdTipoSalida = TypeExit.IdTypeExit
+                    JOIN UNIPASS.LoginUniPass ON Permission.IdUser = LoginUniPass.IdLogin
+                    JOIN UNIPASS.CheckPoints ON Permission.IdPermission = CheckPoints.IdPermission
+                    JOIN UNIPASS.Point ON CheckPoints.IdPoint = Point.IdPoint
                     WHERE Permission.StatusPermission = 'Aprobada'
                       AND Point.NombrePunto = 'Caseta'
                       AND CheckPoints.Estatus = 'Pendiente'
                       AND CheckPoints.Accion = 'SALIDA'
                       AND EXISTS (
                           SELECT 1
-                          FROM CheckPoints AS SubCheck
+                          FROM UNIPASS.CheckPoints AS SubCheck
                           WHERE SubCheck.IdPermission = Permission.IdPermission
                             AND SubCheck.Estatus = 'Confirmada'
                             AND SubCheck.FechaCheck = (
                                 SELECT MIN(FechaCheck)
-                                FROM CheckPoints AS FirstCheck
+                                FROM UNIPASS.CheckPoints AS FirstCheck
                                 WHERE FirstCheck.IdPermission = SubCheck.IdPermission
                             )
                       );`);
@@ -131,19 +131,19 @@ export const findPendingChecksVigilanciaRegreso = () =>
         const result = await pool
             .request()
             .query(`SELECT ${CHECK_FIELDS}
-                    FROM Permission
-                    JOIN TypeExit ON Permission.IdTipoSalida = TypeExit.IdTypeExit
-                    JOIN LoginUniPass ON Permission.IdUser = LoginUniPass.IdLogin
-                    JOIN CheckPoints ON Permission.IdPermission = CheckPoints.IdPermission
-                    JOIN Point ON CheckPoints.IdPoint = Point.IdPoint
+                    FROM UNIPASS.Permission
+                    JOIN UNIPASS.TypeExit ON Permission.IdTipoSalida = TypeExit.IdTypeExit
+                    JOIN UNIPASS.LoginUniPass ON Permission.IdUser = LoginUniPass.IdLogin
+                    JOIN UNIPASS.CheckPoints ON Permission.IdPermission = CheckPoints.IdPermission
+                    JOIN UNIPASS.Point ON CheckPoints.IdPoint = Point.IdPoint
                     WHERE Permission.StatusPermission = 'Aprobada'
                       AND Point.NombrePunto = 'Caseta'
                       AND CheckPoints.Estatus = 'Pendiente'
                       AND CheckPoints.Accion = 'RETORNO'
                       AND EXISTS (
                           SELECT 1
-                          FROM CheckPoints AS SubCheck
-                          JOIN Point AS SubPoint ON SubCheck.IdPoint = SubPoint.IdPoint
+                          FROM UNIPASS.CheckPoints AS SubCheck
+                          JOIN UNIPASS.Point AS SubPoint ON SubCheck.IdPoint = SubPoint.IdPoint
                           WHERE SubCheck.IdPermission = Permission.IdPermission
                             AND SubPoint.NombrePunto = 'Caseta'
                             AND SubCheck.Estatus = 'Confirmada'
@@ -161,10 +161,10 @@ export const findCheckAuthInfo = (idCheck) =>
             .input('IdCheck', sql.Int, idCheck)
             .query(`SELECT cp.IdCheck, cp.IdPoint, cp.Accion, cp.Estatus, cp.IdPermission,
                            p.NombrePunto, lu.Dormitorio AS AlumnoDormitorio
-                    FROM CheckPoints cp
-                    JOIN Point p ON p.IdPoint = cp.IdPoint
-                    JOIN Permission pr ON pr.IdPermission = cp.IdPermission
-                    JOIN LoginUniPass lu ON lu.IdLogin = pr.IdUser
+                    FROM UNIPASS.CheckPoints cp
+                    JOIN UNIPASS.Point p ON p.IdPoint = cp.IdPoint
+                    JOIN UNIPASS.Permission pr ON pr.IdPermission = cp.IdPermission
+                    JOIN UNIPASS.LoginUniPass lu ON lu.IdLogin = pr.IdUser
                     WHERE cp.IdCheck = @IdCheck`);
         return result.recordset[0] || null;
     });
@@ -176,8 +176,8 @@ export const findPermissionSteps = (idPermission) =>
             .request()
             .input('IdPermission', sql.Int, idPermission)
             .query(`SELECT CheckPoints.IdCheck, CheckPoints.Estatus, ${PASO_CASE}
-                    FROM CheckPoints
-                    JOIN Point ON CheckPoints.IdPoint = Point.IdPoint
+                    FROM UNIPASS.CheckPoints
+                    JOIN UNIPASS.Point ON CheckPoints.IdPoint = Point.IdPoint
                     WHERE CheckPoints.IdPermission = @IdPermission`);
         return result.recordset;
     });
@@ -191,7 +191,7 @@ export const updateCheckPoint = (idCheck, { fechaCheck, estatus, observaciones, 
             .input('Estatus', sql.VarChar, estatus)
             .input('Observacion', sql.VarChar, observaciones)
             .input('ConfirmadoPor', sql.Int, confirmadoPor)
-            .query(`UPDATE CheckPoints
+            .query(`UPDATE UNIPASS.CheckPoints
                     SET FechaCheck = @FechaCheck,
                         Estatus = @Estatus,
                         Observaciones = @Observacion,
@@ -206,9 +206,9 @@ export const findCheckInfoForSocket = (idCheck) =>
             .request()
             .input('IdCheckSocket', sql.Int, idCheck)
             .query(`SELECT L.Matricula, CP.IdPermission, CP.Accion
-                    FROM CheckPoints CP
-                    JOIN Permission P ON CP.IdPermission = P.IdPermission
-                    JOIN LoginUniPass L ON P.IdUser = L.IdLogin
+                    FROM UNIPASS.CheckPoints CP
+                    JOIN UNIPASS.Permission P ON CP.IdPermission = P.IdPermission
+                    JOIN UNIPASS.LoginUniPass L ON P.IdUser = L.IdLogin
                     WHERE CP.IdCheck = @IdCheckSocket`);
         return result.recordset[0] || null;
     });

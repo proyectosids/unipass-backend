@@ -7,7 +7,7 @@ const checks = [
     { label: 'Tabla Point', sql: "SELECT 1 FROM sys.tables WHERE name='Point'" },
     { label: 'Tabla CheckPoints', sql: "SELECT 1 FROM sys.tables WHERE name='CheckPoints'" },
     { label: 'Tabla CheckerGrant', sql: "SELECT 1 FROM sys.tables WHERE name='CheckerGrant'" },
-    { label: 'Columna CheckPoints.ConfirmadoPor', sql: "SELECT 1 FROM sys.columns WHERE name='ConfirmadoPor' AND object_id=OBJECT_ID('dbo.CheckPoints')" }
+    { label: 'Columna CheckPoints.ConfirmadoPor', sql: "SELECT 1 FROM sys.columns WHERE name='ConfirmadoPor' AND object_id=OBJECT_ID('UNIPASS.CheckPoints')" }
 ];
 
 const run = async () => {
@@ -23,12 +23,12 @@ const run = async () => {
 
         // Distribucion de TipoUser (contexto para roles/migracion)
         const tipos = await pool.request().query(
-            'SELECT TipoUser, COUNT(*) AS n FROM LoginUniPass GROUP BY TipoUser ORDER BY n DESC'
+            'SELECT TipoUser, COUNT(*) AS n FROM UNIPASS.LoginUniPass GROUP BY TipoUser ORDER BY n DESC'
         );
         console.log('\nTipoUser en LoginUniPass:');
         tipos.recordset.forEach((t) => console.log(`   ${t.TipoUser}: ${t.n}`));
 
-        const pts = await pool.request().query('SELECT IdPoint, NombrePunto FROM Point ORDER BY IdPoint');
+        const pts = await pool.request().query('SELECT IdPoint, NombrePunto FROM UNIPASS.Point ORDER BY IdPoint');
         console.log('\nPuntos (Point):');
         pts.recordset.forEach((p) => console.log(`   IdPoint=${p.IdPoint} -> ${p.NombrePunto}`));
     });

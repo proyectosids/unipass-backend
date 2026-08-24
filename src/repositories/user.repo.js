@@ -8,7 +8,7 @@ export const findUserById = (id) =>
         const result = await pool
             .request()
             .input('Id', sql.Int, id)
-            .query('SELECT * FROM LoginUniPass WHERE IdLogin = @Id');
+            .query('SELECT * FROM UNIPASS.LoginUniPass WHERE IdLogin = @Id');
         return result.recordset[0] || null;
     });
 
@@ -17,7 +17,7 @@ export const findUserByMatricula = (matricula) =>
         const result = await pool
             .request()
             .input('Matricula', sql.VarChar, matricula)
-            .query('SELECT * FROM LoginUniPass WHERE Matricula = @Matricula');
+            .query('SELECT * FROM UNIPASS.LoginUniPass WHERE Matricula = @Matricula');
         return result.recordset[0] || null;
     });
 
@@ -27,7 +27,7 @@ export const findUserByCorreo = (correo) =>
         const result = await pool
             .request()
             .input('Correo', sql.VarChar, correo)
-            .query('SELECT * FROM LoginUniPass WHERE Correo = @Correo');
+            .query('SELECT * FROM UNIPASS.LoginUniPass WHERE Correo = @Correo');
         return result.recordset[0] || null;
     });
 
@@ -36,7 +36,7 @@ export const findUserByMatriculaOrCorreo = (value) =>
         const result = await pool
             .request()
             .input('Matricula', sql.VarChar, value)
-            .query('SELECT * FROM LoginUniPass WHERE Matricula = @Matricula OR Correo = @Matricula');
+            .query('SELECT * FROM UNIPASS.LoginUniPass WHERE Matricula = @Matricula OR Correo = @Matricula');
         return result.recordset[0] || null;
     });
 
@@ -45,7 +45,7 @@ export const findCheckersByEmail = (email) =>
         const result = await pool
             .request()
             .input('EmailEncargado', sql.VarChar, email)
-            .query(`SELECT * FROM LoginUniPass WHERE TipoUser = 'DEPARTAMENTO' AND Correo = @EmailEncargado`);
+            .query(`SELECT * FROM UNIPASS.LoginUniPass WHERE TipoUser = 'DEPARTAMENTO' AND Correo = @EmailEncargado`);
         return result.recordset;
     });
 
@@ -59,8 +59,8 @@ export const findPersonaByNombreOApellidos = (nombre) =>
                                WHEN p.MatriculaEncargado IS NOT NULL THEN 'Existe en Position'
                                ELSE 'No existe en Position'
                            END AS ExisteEnPosition
-                    FROM LoginUniPass AS lp
-                    LEFT JOIN Position AS p ON lp.Matricula = p.Asignado
+                    FROM UNIPASS.LoginUniPass AS lp
+                    LEFT JOIN UNIPASS.Position AS p ON lp.Matricula = p.Asignado
                     WHERE (lp.Nombre = @Nombre OR lp.Apellidos = @Nombre)`);
         return result.recordset;
     });
@@ -74,7 +74,7 @@ export const searchAssignablePersonsByName = (q) =>
             .request()
             .input('q', sql.VarChar, q)
             .query(`SELECT IdLogin, Matricula, Nombre, Apellidos, TipoUser
-                    FROM LoginUniPass
+                    FROM UNIPASS.LoginUniPass
                     WHERE StatusActividad = 1
                       AND TipoUser <> 'DEPARTAMENTO'
                       AND (
@@ -93,7 +93,7 @@ export const findPreceptorMatriculaByDormitorio = (dormitorio) =>
     withConnection(async (pool) => {
         const result = await pool.request()
             .input('Dormitorio', sql.Int, dormitorio)
-            .query(`SELECT TOP 1 Matricula FROM LoginUniPass
+            .query(`SELECT TOP 1 Matricula FROM UNIPASS.LoginUniPass
                     WHERE TipoUser = 'PRECEPTOR'
                       AND Dormitorio = @Dormitorio
                       AND StatusActividad = 1`);
@@ -108,8 +108,8 @@ export const findCoordinadorActivo = () =>
     withConnection(async (pool) => {
         const result = await pool.request()
             .query(`SELECT TOP 1 L.Matricula AS IdEmpleado, B.Identificador AS NoDepto
-                    FROM LoginUniPass L
-                    LEFT JOIN Bedroom B ON B.IdBedroom = L.Dormitorio
+                    FROM UNIPASS.LoginUniPass L
+                    LEFT JOIN UNIPASS.Bedroom B ON B.IdBedroom = L.Dormitorio
                     WHERE L.TipoUser = 'ADMINISTRATIVO'
                       AND L.StatusActividad = 1
                     ORDER BY L.IdLogin`);
@@ -122,20 +122,20 @@ export const findTokenFCMByMatricula = (matricula) =>
             .request()
             .input('Matricula', sql.VarChar, matricula)
             .query(`IF EXISTS (
-                        SELECT * FROM LoginUniPass
-                        INNER JOIN Position ON LoginUniPass.IdCargoDelegado = Position.IdCargo
+                        SELECT * FROM UNIPASS.LoginUniPass
+                        INNER JOIN UNIPASS.Position ON LoginUniPass.IdCargoDelegado = Position.IdCargo
                         WHERE Position.MatriculaEncargado = @Matricula
                           AND Position.Activo = 1
                     )
                     BEGIN
-                        SELECT TokenCFM FROM LoginUniPass
-                        INNER JOIN Position ON LoginUniPass.IdCargoDelegado = Position.IdCargo
+                        SELECT TokenCFM FROM UNIPASS.LoginUniPass
+                        INNER JOIN UNIPASS.Position ON LoginUniPass.IdCargoDelegado = Position.IdCargo
                         WHERE Position.MatriculaEncargado = @Matricula
                           AND Position.Activo = 1
                     END
                     ELSE
                     BEGIN
-                        SELECT TokenCFM FROM LoginUniPass WHERE Matricula = @Matricula
+                        SELECT TokenCFM FROM UNIPASS.LoginUniPass WHERE Matricula = @Matricula
                     END`);
         return result.recordset;
     });
@@ -149,7 +149,7 @@ export const updateUserPasswordById = (idLogin, hashedPassword) =>
             .request()
             .input('Id', sql.Int, idLogin)
             .input('Password', sql.VarChar, hashedPassword)
-            .query('UPDATE LoginUniPass SET Contraseña = @Password WHERE IdLogin = @Id');
+            .query('UPDATE UNIPASS.LoginUniPass SET Contraseña = @Password WHERE IdLogin = @Id');
         return result.rowsAffected[0] > 0;
     });
 
@@ -160,7 +160,7 @@ export const updateUserPassword = (correo, hashedPassword) =>
             .input('Correo', sql.VarChar, correo)
             .input('Password', sql.VarChar, hashedPassword)
             .input('TipoUser', sql.VarChar, 'DEPARTAMENTO')
-            .query('UPDATE LoginUniPass SET Contraseña = @Password WHERE Correo = @Correo AND TipoUser != @TipoUser');
+            .query('UPDATE UNIPASS.LoginUniPass SET Contraseña = @Password WHERE Correo = @Correo AND TipoUser != @TipoUser');
         return result.rowsAffected[0] > 0;
     });
 
@@ -170,7 +170,7 @@ export const updateDocumentacion = (matricula, statusDoc) =>
             .request()
             .input('Matricula', sql.VarChar, matricula)
             .input('StatusDoc', sql.Int, statusDoc)
-            .query('UPDATE LoginUniPass SET Documentacion = @StatusDoc WHERE Matricula = @Matricula');
+            .query('UPDATE UNIPASS.LoginUniPass SET Documentacion = @StatusDoc WHERE Matricula = @Matricula');
         return result.rowsAffected[0] > 0;
     });
 
@@ -180,7 +180,7 @@ export const updateTokenFCM = (matricula, tokenCFM) =>
             .request()
             .input('Matricula', sql.VarChar, matricula)
             .input('TokenCFM', sql.VarChar, tokenCFM)
-            .query('UPDATE LoginUniPass SET TokenCFM = @TokenCFM WHERE Matricula = @Matricula');
+            .query('UPDATE UNIPASS.LoginUniPass SET TokenCFM = @TokenCFM WHERE Matricula = @Matricula');
         return result.rowsAffected[0] > 0;
     });
 
@@ -189,7 +189,7 @@ export const clearTokenFCMByMatricula = (matricula) =>
         await pool
             .request()
             .input('Matricula', sql.VarChar, matricula)
-            .query('UPDATE LoginUniPass SET TokenCFM = NULL WHERE Matricula = @Matricula');
+            .query('UPDATE UNIPASS.LoginUniPass SET TokenCFM = NULL WHERE Matricula = @Matricula');
     });
 
 // === Cargo / Position ===
@@ -199,7 +199,7 @@ export const findIdCargoDelegadoByMatricula = (matricula) =>
         const result = await pool
             .request()
             .input('Matricula', sql.VarChar, matricula)
-            .query('SELECT IdCargoDelegado FROM LoginUniPass WHERE Matricula = @Matricula');
+            .query('SELECT IdCargoDelegado FROM UNIPASS.LoginUniPass WHERE Matricula = @Matricula');
         if (result.recordset.length === 0) return undefined;
         return result.recordset[0].IdCargoDelegado;
     });
@@ -209,7 +209,7 @@ export const clearIdCargoDelegado = (matricula) =>
         await pool
             .request()
             .input('Matricula', sql.VarChar, matricula)
-            .query('UPDATE LoginUniPass SET IdCargoDelegado = NULL WHERE Matricula = @Matricula');
+            .query('UPDATE UNIPASS.LoginUniPass SET IdCargoDelegado = NULL WHERE Matricula = @Matricula');
     });
 
 export const deletePositionByIdCargo = (idCargo) =>
@@ -217,7 +217,7 @@ export const deletePositionByIdCargo = (idCargo) =>
         const result = await pool
             .request()
             .input('IdCargo', sql.VarChar, idCargo.toString())
-            .query('DELETE FROM Position WHERE IdCargo = @IdCargo');
+            .query('DELETE FROM UNIPASS.Position WHERE IdCargo = @IdCargo');
         return result.rowsAffected[0] > 0;
     });
 
@@ -227,7 +227,7 @@ export const updateUserCargo = (matricula, idCargoDelegado) =>
             .request()
             .input('Matricula', sql.VarChar, matricula)
             .input('Delegado', sql.Int, idCargoDelegado)
-            .query('UPDATE LoginUniPass SET IdCargoDelegado = @Delegado WHERE Matricula = @Matricula');
+            .query('UPDATE UNIPASS.LoginUniPass SET IdCargoDelegado = @Delegado WHERE Matricula = @Matricula');
         return result.rowsAffected[0] > 0;
     });
 

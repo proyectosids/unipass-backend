@@ -197,7 +197,7 @@ const createPermissionLegacy = async (req, res) => {
         const idUser = req.user.id;
         const exists = await userExistsById(idUser);
         if (!exists) {
-            return res.status(400).json({ error: 'El IdUsuario no existe en dbo.Users' });
+            return res.status(400).json({ error: 'El IdUsuario no existe en UNIPASS.Users' });
         }
 
         const fechas = ajustarFechasUTC(req.body);

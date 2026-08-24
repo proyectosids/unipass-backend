@@ -9,7 +9,7 @@ export const createResetToken = ({ idLogin, tokenHash, expiraEn }) =>
             .input('IdLogin', sql.Int, idLogin)
             .input('Hash', sql.NVarChar(128), tokenHash)
             .input('ExpiraEn', sql.DateTime, expiraEn)
-            .query(`INSERT INTO PasswordReset (IdLogin, ResetTokenHash, ExpiraEn)
+            .query(`INSERT INTO UNIPASS.PasswordReset (IdLogin, ResetTokenHash, ExpiraEn)
                     VALUES (@IdLogin, @Hash, @ExpiraEn)`);
     });
 
@@ -18,7 +18,7 @@ export const findResetByTokenHash = (tokenHash) =>
         const result = await pool.request()
             .input('Hash', sql.NVarChar(128), tokenHash)
             .query(`SELECT TOP 1 Id, IdLogin, ExpiraEn, UsadoEn
-                    FROM PasswordReset WHERE ResetTokenHash = @Hash
+                    FROM UNIPASS.PasswordReset WHERE ResetTokenHash = @Hash
                     ORDER BY Id DESC`);
         return result.recordset[0] || null;
     });
@@ -33,7 +33,7 @@ export const consumeResetAndUpdatePasswordTx = ({ resetId, idLogin, hashedPasswo
         try {
             const consume = await new sql.Request(tx)
                 .input('Id', sql.Int, resetId)
-                .query('UPDATE PasswordReset SET UsadoEn = GETDATE() WHERE Id = @Id AND UsadoEn IS NULL');
+                .query('UPDATE UNIPASS.PasswordReset SET UsadoEn = GETDATE() WHERE Id = @Id AND UsadoEn IS NULL');
             if (consume.rowsAffected[0] !== 1) {
                 await tx.rollback();
                 return false; // ya consumido (single-use)
@@ -41,7 +41,7 @@ export const consumeResetAndUpdatePasswordTx = ({ resetId, idLogin, hashedPasswo
             await new sql.Request(tx)
                 .input('IdLogin', sql.Int, idLogin)
                 .input('Password', sql.VarChar, hashedPassword)
-                .query('UPDATE LoginUniPass SET Contraseña = @Password WHERE IdLogin = @IdLogin');
+                .query('UPDATE UNIPASS.LoginUniPass SET Contraseña = @Password WHERE IdLogin = @IdLogin');
             await tx.commit();
             return true;
         } catch (error) {

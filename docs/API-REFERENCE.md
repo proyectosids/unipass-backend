@@ -236,7 +236,7 @@ y queda un eslabón `Pendiente`, emite `new_authorization_assigned` al siguiente
 ### GET /autorizadorSalida?tipo=2|3&nivelAcademico=...&sexo=...
 
 Resuelve **quién autoriza** las salidas ESPECIAL (2) y A CASA (3) según el switch
-`AUTORIZADOR_SALIDAS` de `dbo.Configuracion` (migración `005`). Se alterna con un
+`AUTORIZADOR_SALIDAS` de `UNIPASS.Configuracion` (migración `005`). Se alterna con un
 UPDATE en BD, sin redesplegar. `nivelAcademico`/`sexo` solo se usan en modo PRECEPTOR.
 
 ```json

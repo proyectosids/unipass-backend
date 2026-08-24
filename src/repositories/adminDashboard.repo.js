@@ -19,10 +19,10 @@ export const getAdminDashboardData = ({ idCoordinador, desde, hastaExclusivo }) 
         // 'Pendiente', misma ventana -30/+15 dias que /permissionsEmployee.
         const pendientes = await base().query(`
             SELECT L.Dormitorio AS IdDormitorio, B.Nombre, COUNT(DISTINCT P.IdPermission) AS Total
-            FROM Permission P
-            INNER JOIN Authorize A ON A.IdPermission = P.IdPermission
-            INNER JOIN LoginUniPass L ON L.IdLogin = P.IdUser
-            LEFT JOIN Bedroom B ON B.IdBedroom = L.Dormitorio
+            FROM UNIPASS.Permission P
+            INNER JOIN UNIPASS.Authorize A ON A.IdPermission = P.IdPermission
+            INNER JOIN UNIPASS.LoginUniPass L ON L.IdLogin = P.IdUser
+            LEFT JOIN UNIPASS.Bedroom B ON B.IdBedroom = L.Dormitorio
             WHERE A.IdEmpleado = @IdCoordinador
               AND P.IdTipoSalida IN (2, 3)
               AND P.StatusPermission = 'Pendiente'
@@ -34,19 +34,19 @@ export const getAdminDashboardData = ({ idCoordinador, desde, hastaExclusivo }) 
         // retorno de Caseta confirmado (paso 3). Cuenta alumnos distintos.
         const fuera = await base().query(`
             SELECT L.Dormitorio AS IdDormitorio, B.Nombre, COUNT(DISTINCT L.IdLogin) AS Total
-            FROM Permission P
-            INNER JOIN LoginUniPass L ON L.IdLogin = P.IdUser
-            LEFT JOIN Bedroom B ON B.IdBedroom = L.Dormitorio
+            FROM UNIPASS.Permission P
+            INNER JOIN UNIPASS.LoginUniPass L ON L.IdLogin = P.IdUser
+            LEFT JOIN UNIPASS.Bedroom B ON B.IdBedroom = L.Dormitorio
             WHERE L.TipoUser = 'ALUMNO'
               AND EXISTS (
-                  SELECT 1 FROM CheckPoints CS
-                  JOIN Point PS ON PS.IdPoint = CS.IdPoint
+                  SELECT 1 FROM UNIPASS.CheckPoints CS
+                  JOIN UNIPASS.Point PS ON PS.IdPoint = CS.IdPoint
                   WHERE CS.IdPermission = P.IdPermission
                     AND CS.Accion = 'SALIDA' AND CS.Estatus = 'Confirmada'
                     AND PS.NombrePunto = 'Caseta')
               AND NOT EXISTS (
-                  SELECT 1 FROM CheckPoints CR
-                  JOIN Point PR ON PR.IdPoint = CR.IdPoint
+                  SELECT 1 FROM UNIPASS.CheckPoints CR
+                  JOIN UNIPASS.Point PR ON PR.IdPoint = CR.IdPoint
                   WHERE CR.IdPermission = P.IdPermission
                     AND CR.Accion = 'RETORNO' AND CR.Estatus = 'Confirmada'
                     AND PR.NombrePunto = 'Caseta')
@@ -60,9 +60,9 @@ export const getAdminDashboardData = ({ idCoordinador, desde, hastaExclusivo }) 
                    LTRIM(RTRIM(CONCAT(L.Nombre, ' ', L.Apellidos))) AS Alumno,
                    P.IdTipoSalida, P.StatusPermission,
                    COALESCE(MAX(A.FechaAprobacion), P.FechaSolicitada) AS Fecha
-            FROM Permission P
-            INNER JOIN LoginUniPass L ON L.IdLogin = P.IdUser
-            LEFT JOIN Authorize A ON A.IdPermission = P.IdPermission AND A.FechaAprobacion IS NOT NULL
+            FROM UNIPASS.Permission P
+            INNER JOIN UNIPASS.LoginUniPass L ON L.IdLogin = P.IdUser
+            LEFT JOIN UNIPASS.Authorize A ON A.IdPermission = P.IdPermission AND A.FechaAprobacion IS NOT NULL
             WHERE P.StatusPermission IN ('Aprobada', 'Rechazada')
               AND P.IdTipoSalida IN (2, 3)
               AND CAST(P.FechaSolicitada AS DATE) >= @Desde AND CAST(P.FechaSolicitada AS DATE) < @HastaEx
@@ -75,9 +75,9 @@ export const getAdminDashboardData = ({ idCoordinador, desde, hastaExclusivo }) 
                    COUNT(*) AS Solicitudes,
                    SUM(CASE WHEN P.StatusPermission = 'Aprobada' THEN 1 ELSE 0 END) AS Aprobadas,
                    SUM(CASE WHEN P.StatusPermission = 'Rechazada' THEN 1 ELSE 0 END) AS Rechazadas
-            FROM Permission P
-            INNER JOIN LoginUniPass L ON L.IdLogin = P.IdUser
-            LEFT JOIN Bedroom B ON B.IdBedroom = L.Dormitorio
+            FROM UNIPASS.Permission P
+            INNER JOIN UNIPASS.LoginUniPass L ON L.IdLogin = P.IdUser
+            LEFT JOIN UNIPASS.Bedroom B ON B.IdBedroom = L.Dormitorio
             WHERE P.IdTipoSalida IN (2, 3)
               AND CAST(P.FechaSolicitada AS DATE) >= @Desde AND CAST(P.FechaSolicitada AS DATE) < @HastaEx
             GROUP BY L.Dormitorio, B.Nombre
@@ -106,13 +106,13 @@ export const findReporteSalidas = ({ desde, hastaEx }) =>
                        COALESCE(B.Nombre, CONCAT('Dormitorio ', L.Dormitorio)) AS Dormitorio,
                        P.IdTipoSalida, P.FechaSalida, P.FechaRegreso, P.StatusPermission,
                        COALESCE(AUT.Nombre, '') AS AutorizadoPor
-                FROM Permission P
-                INNER JOIN LoginUniPass L ON L.IdLogin = P.IdUser
-                LEFT JOIN Bedroom B ON B.IdBedroom = L.Dormitorio
+                FROM UNIPASS.Permission P
+                INNER JOIN UNIPASS.LoginUniPass L ON L.IdLogin = P.IdUser
+                LEFT JOIN UNIPASS.Bedroom B ON B.IdBedroom = L.Dormitorio
                 OUTER APPLY (
                     SELECT TOP 1 LTRIM(RTRIM(CONCAT(L2.Nombre, ' ', L2.Apellidos))) AS Nombre
-                    FROM Authorize A
-                    LEFT JOIN LoginUniPass L2 ON L2.Matricula = CAST(A.IdEmpleado AS VARCHAR(20))
+                    FROM UNIPASS.Authorize A
+                    LEFT JOIN UNIPASS.LoginUniPass L2 ON L2.Matricula = CAST(A.IdEmpleado AS VARCHAR(20))
                     WHERE A.IdPermission = P.IdPermission
                       AND A.StatusAuthorize = P.StatusPermission
                     ORDER BY A.FechaAprobacion DESC
@@ -143,12 +143,12 @@ export const findObservacionesChecadores = ({ desde, hastaEx }) =>
                        END AS Paso,
                        COALESCE(LTRIM(RTRIM(CONCAT(LC.Nombre, ' ', LC.Apellidos))), '') AS Checador,
                        CP.FechaCheck, CP.Observaciones
-                FROM CheckPoints CP
-                INNER JOIN Point PT ON PT.IdPoint = CP.IdPoint
-                INNER JOIN Permission P ON P.IdPermission = CP.IdPermission
-                INNER JOIN LoginUniPass L ON L.IdLogin = P.IdUser
-                LEFT JOIN Bedroom B ON B.IdBedroom = L.Dormitorio
-                LEFT JOIN LoginUniPass LC ON LC.IdLogin = CP.ConfirmadoPor
+                FROM UNIPASS.CheckPoints CP
+                INNER JOIN UNIPASS.Point PT ON PT.IdPoint = CP.IdPoint
+                INNER JOIN UNIPASS.Permission P ON P.IdPermission = CP.IdPermission
+                INNER JOIN UNIPASS.LoginUniPass L ON L.IdLogin = P.IdUser
+                LEFT JOIN UNIPASS.Bedroom B ON B.IdBedroom = L.Dormitorio
+                LEFT JOIN UNIPASS.LoginUniPass LC ON LC.IdLogin = CP.ConfirmadoPor
                 WHERE CP.Observaciones IS NOT NULL
                   AND LTRIM(RTRIM(CP.Observaciones)) <> ''
                   AND LTRIM(RTRIM(CP.Observaciones)) <> 'Ninguna'

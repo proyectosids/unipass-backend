@@ -43,16 +43,16 @@ export const findPermissionsByUserPaginated = (idUser, page, limit) =>
             .input('Offset', sql.Int, parseInt(offset))
             .query(`
                 SELECT ${PERMISSION_FIELDS}
-                FROM Permission
-                JOIN TypeExit ON Permission.IdTipoSalida = TypeExit.IdTypeExit
-                JOIN LoginUniPass ON Permission.IdUser = LoginUniPass.IdLogin
+                FROM UNIPASS.Permission
+                JOIN UNIPASS.TypeExit ON Permission.IdTipoSalida = TypeExit.IdTypeExit
+                JOIN UNIPASS.LoginUniPass ON Permission.IdUser = LoginUniPass.IdLogin
                 WHERE IdLogin = @Id
                 ORDER BY Permission.FechaSolicitada DESC
                 OFFSET @Offset ROWS FETCH NEXT @Limit ROWS ONLY
             `);
         const totalResult = await pool.request()
             .input('Id', sql.Int, idUser)
-            .query('SELECT COUNT(*) as TotalPermissions FROM Permission WHERE IdUser = @Id');
+            .query('SELECT COUNT(*) as TotalPermissions FROM UNIPASS.Permission WHERE IdUser = @Id');
         return {
             data: dataResult.recordset,
             totalItems: totalResult.recordset[0].TotalPermissions
@@ -63,7 +63,7 @@ export const findPermissionById = (id) =>
     withConnection(async (pool) => {
         const result = await pool.request()
             .input('Id', sql.Int, id)
-            .query('SELECT * FROM Permission WHERE IdPermission = @Id');
+            .query('SELECT * FROM UNIPASS.Permission WHERE IdPermission = @Id');
         return result.recordset[0] || null;
     });
 
@@ -72,7 +72,7 @@ export const findPermissionOwnerId = (id) =>
     withConnection(async (pool) => {
         const result = await pool.request()
             .input('Id', sql.Int, id)
-            .query('SELECT IdUser FROM Permission WHERE IdPermission = @Id');
+            .query('SELECT IdUser FROM UNIPASS.Permission WHERE IdPermission = @Id');
         return result.recordset[0]?.IdUser ?? null;
     });
 
@@ -80,7 +80,7 @@ export const userExistsById = (idUser) =>
     withConnection(async (pool) => {
         const result = await pool.request()
             .input('IdUser', sql.Int, idUser)
-            .query('SELECT 1 FROM dbo.LoginUniPass WHERE IdLogin = @IdUser');
+            .query('SELECT 1 FROM UNIPASS.LoginUniPass WHERE IdLogin = @IdUser');
         return result.recordset.length > 0;
     });
 
@@ -88,7 +88,7 @@ export const findAlumnoBasicByLogin = (idLogin) =>
     withConnection(async (pool) => {
         const result = await pool.request()
             .input('IdUserSocket', sql.Int, idLogin)
-            .query('SELECT Matricula, Nombre FROM LoginUniPass WHERE IdLogin = @IdUserSocket');
+            .query('SELECT Matricula, Nombre FROM UNIPASS.LoginUniPass WHERE IdLogin = @IdUserSocket');
         return result.recordset[0] || null;
     });
 
@@ -96,7 +96,7 @@ export const findEmpleadosAuthorizeByPermission = (idPermission) =>
     withConnection(async (pool) => {
         const result = await pool.request()
             .input('IdPermissionSocket', sql.Int, idPermission)
-            .query('SELECT IdEmpleado FROM Authorize WHERE IdPermission = @IdPermissionSocket');
+            .query('SELECT IdEmpleado FROM UNIPASS.Authorize WHERE IdPermission = @IdPermissionSocket');
         return result.recordset;
     });
 
@@ -104,8 +104,8 @@ export const findAlumnoMatriculaByPermission = (idPermission) =>
     withConnection(async (pool) => {
         const result = await pool.request()
             .input('IdPermisoSocket', sql.Int, idPermission)
-            .query(`SELECT L.Matricula FROM Permission P
-                    JOIN LoginUniPass L ON P.IdUser = L.IdLogin
+            .query(`SELECT L.Matricula FROM UNIPASS.Permission P
+                    JOIN UNIPASS.LoginUniPass L ON P.IdUser = L.IdLogin
                     WHERE P.IdPermission = @IdPermisoSocket`);
         return result.recordset[0]?.Matricula || null;
     });
@@ -117,10 +117,10 @@ export const findPermissionsForAutorizacionByEmpleado = (idEmpleado) =>
         const result = await pool.request()
             .input('Id', sql.Int, idEmpleado)
             .query(`SELECT ${PERMISSION_FIELDS}
-                    FROM Permission
-                    INNER JOIN Authorize ON Permission.IdPermission = Authorize.IdPermission
-                    JOIN TypeExit ON Permission.IdTipoSalida = TypeExit.IdTypeExit
-                    JOIN LoginUniPass ON Permission.IdUser = LoginUniPass.IdLogin
+                    FROM UNIPASS.Permission
+                    INNER JOIN UNIPASS.Authorize ON Permission.IdPermission = Authorize.IdPermission
+                    JOIN UNIPASS.TypeExit ON Permission.IdTipoSalida = TypeExit.IdTypeExit
+                    JOIN UNIPASS.LoginUniPass ON Permission.IdUser = LoginUniPass.IdLogin
                     WHERE Authorize.IdEmpleado = @Id
                       AND Permission.FechaSalida BETWEEN DATEADD(DAY, -30, GETDATE()) AND DATEADD(DAY, 15, GETDATE())`);
         return result.recordset;
@@ -133,13 +133,13 @@ export const findPermissionsForAutorizacionPreceByEmpleado = (idEmpleado) =>
         const result = await pool.request()
             .input('Id', sql.Int, idEmpleado)
             .query(`SELECT ${PERMISSION_FIELDS}
-                    FROM Permission
-                    INNER JOIN Authorize ON Permission.IdPermission = Authorize.IdPermission
-                    JOIN TypeExit ON Permission.IdTipoSalida = TypeExit.IdTypeExit
-                    JOIN LoginUniPass ON Permission.IdUser = LoginUniPass.IdLogin
+                    FROM UNIPASS.Permission
+                    INNER JOIN UNIPASS.Authorize ON Permission.IdPermission = Authorize.IdPermission
+                    JOIN UNIPASS.TypeExit ON Permission.IdTipoSalida = TypeExit.IdTypeExit
+                    JOIN UNIPASS.LoginUniPass ON Permission.IdUser = LoginUniPass.IdLogin
                     WHERE Authorize.IdEmpleado = @Id
                       AND Permission.IdPermission IN (
-                          SELECT A1.IdPermission FROM Authorize A1
+                          SELECT A1.IdPermission FROM UNIPASS.Authorize A1
                           GROUP BY A1.IdPermission HAVING COUNT(A1.IdAuthorize) = 1
                       )
                       AND Permission.FechaSalida BETWEEN DATEADD(DAY, -30, GETDATE()) AND DATEADD(DAY, 15, GETDATE())
@@ -147,16 +147,16 @@ export const findPermissionsForAutorizacionPreceByEmpleado = (idEmpleado) =>
                     UNION
 
                     SELECT ${PERMISSION_FIELDS}
-                    FROM Permission
-                    INNER JOIN Authorize ON Permission.IdPermission = Authorize.IdPermission
-                    JOIN TypeExit ON Permission.IdTipoSalida = TypeExit.IdTypeExit
-                    JOIN LoginUniPass ON Permission.IdUser = LoginUniPass.IdLogin
+                    FROM UNIPASS.Permission
+                    INNER JOIN UNIPASS.Authorize ON Permission.IdPermission = Authorize.IdPermission
+                    JOIN UNIPASS.TypeExit ON Permission.IdTipoSalida = TypeExit.IdTypeExit
+                    JOIN UNIPASS.LoginUniPass ON Permission.IdUser = LoginUniPass.IdLogin
                     WHERE Authorize.IdEmpleado = @Id
                       AND Permission.IdPermission IN (
-                          SELECT A1.IdPermission FROM Authorize A1
+                          SELECT A1.IdPermission FROM UNIPASS.Authorize A1
                           WHERE A1.StatusAuthorize = 'Aprobada'
                             AND A1.IdAuthorize = (
-                                SELECT TOP 1 A2.IdAuthorize FROM Authorize A2
+                                SELECT TOP 1 A2.IdAuthorize FROM UNIPASS.Authorize A2
                                 WHERE A2.IdPermission = A1.IdPermission
                                 ORDER BY A2.IdAuthorize
                             )
@@ -169,7 +169,7 @@ export const findTop10PermissionsByStudent = (idLogin) =>
     withConnection(async (pool) => {
         const result = await pool.request()
             .input('IdLogin', sql.Int, idLogin)
-            .query('SELECT TOP 10 * FROM Permission WHERE IdUser = @IdLogin ORDER BY FechaSolicitada DESC');
+            .query('SELECT TOP 10 * FROM UNIPASS.Permission WHERE IdUser = @IdLogin ORDER BY FechaSolicitada DESC');
         return result.recordset;
     });
 
@@ -178,10 +178,10 @@ export const findTop10PermissionsByEmployee = (idEmpleado) =>
         const result = await pool.request()
             .input('Matricula', sql.Int, idEmpleado)
             .query(`SELECT TOP 10 ${PERMISSION_FIELDS}
-                    FROM Permission
-                    INNER JOIN Authorize ON Permission.IdPermission = Authorize.IdPermission
-                    JOIN TypeExit ON Permission.IdTipoSalida = TypeExit.IdTypeExit
-                    JOIN LoginUniPass ON Permission.IdUser = LoginUniPass.IdLogin
+                    FROM UNIPASS.Permission
+                    INNER JOIN UNIPASS.Authorize ON Permission.IdPermission = Authorize.IdPermission
+                    JOIN UNIPASS.TypeExit ON Permission.IdTipoSalida = TypeExit.IdTypeExit
+                    JOIN UNIPASS.LoginUniPass ON Permission.IdUser = LoginUniPass.IdLogin
                     WHERE Authorize.IdEmpleado = @Matricula
                     ORDER BY Permission.FechaSolicitada DESC`);
         return result.recordset;
@@ -194,28 +194,28 @@ export const findTop10PermissionsByPrece = (idEmpleado) =>
         const result = await pool.request()
             .input('Matricula', sql.Int, idEmpleado)
             .query(`SELECT TOP 10 * FROM (
-                        SELECT ${PERMISSION_FIELDS} FROM Permission
-                        INNER JOIN Authorize ON Permission.IdPermission = Authorize.IdPermission
-                        JOIN TypeExit ON Permission.IdTipoSalida = TypeExit.IdTypeExit
-                        JOIN LoginUniPass ON Permission.IdUser = LoginUniPass.IdLogin
+                        SELECT ${PERMISSION_FIELDS} FROM UNIPASS.Permission
+                        INNER JOIN UNIPASS.Authorize ON Permission.IdPermission = Authorize.IdPermission
+                        JOIN UNIPASS.TypeExit ON Permission.IdTipoSalida = TypeExit.IdTypeExit
+                        JOIN UNIPASS.LoginUniPass ON Permission.IdUser = LoginUniPass.IdLogin
                         WHERE Authorize.IdEmpleado = @Matricula
                           AND Permission.IdPermission IN (
-                              SELECT A1.IdPermission FROM Authorize A1
+                              SELECT A1.IdPermission FROM UNIPASS.Authorize A1
                               GROUP BY A1.IdPermission HAVING COUNT(A1.IdAuthorize) = 1
                           )
 
                         UNION
 
-                        SELECT ${PERMISSION_FIELDS} FROM Permission
-                        INNER JOIN Authorize ON Permission.IdPermission = Authorize.IdPermission
-                        JOIN TypeExit ON Permission.IdTipoSalida = TypeExit.IdTypeExit
-                        JOIN LoginUniPass ON Permission.IdUser = LoginUniPass.IdLogin
+                        SELECT ${PERMISSION_FIELDS} FROM UNIPASS.Permission
+                        INNER JOIN UNIPASS.Authorize ON Permission.IdPermission = Authorize.IdPermission
+                        JOIN UNIPASS.TypeExit ON Permission.IdTipoSalida = TypeExit.IdTypeExit
+                        JOIN UNIPASS.LoginUniPass ON Permission.IdUser = LoginUniPass.IdLogin
                         WHERE Authorize.IdEmpleado = @Matricula
                           AND Permission.IdPermission IN (
-                              SELECT A1.IdPermission FROM Authorize A1
+                              SELECT A1.IdPermission FROM UNIPASS.Authorize A1
                               WHERE A1.StatusAuthorize = 'Aprobada'
                                 AND A1.IdAuthorize = (
-                                    SELECT TOP 1 A2.IdAuthorize FROM Authorize A2
+                                    SELECT TOP 1 A2.IdAuthorize FROM UNIPASS.Authorize A2
                                     WHERE A2.IdPermission = A1.IdPermission
                                     ORDER BY A2.IdAuthorize
                                 )
@@ -233,13 +233,13 @@ export const findDashboardPermissionCounts = (matriculaPreceptor) =>
             .input('Matricula', sql.VarChar, matriculaPreceptor)
             .query(`
                 WITH EmpleadoDormitorio AS (
-                    SELECT TOP 1 Dormitorio AS Dorm FROM LoginUniPass WHERE Matricula = @Matricula
+                    SELECT TOP 1 Dormitorio AS Dorm FROM UNIPASS.LoginUniPass WHERE Matricula = @Matricula
                 ),
                 PermisosFiltrados AS (
                     SELECT DISTINCT P.IdPermission, P.StatusPermission
-                    FROM Permission P
-                    INNER JOIN Authorize A ON P.IdPermission = A.IdPermission
-                    JOIN LoginUniPass L ON P.IdUser = L.IdLogin
+                    FROM UNIPASS.Permission P
+                    INNER JOIN UNIPASS.Authorize A ON P.IdPermission = A.IdPermission
+                    JOIN UNIPASS.LoginUniPass L ON P.IdUser = L.IdLogin
                     CROSS APPLY (SELECT Dorm FROM EmpleadoDormitorio) AS D
                     WHERE
                         (D.Dorm = 5)
@@ -247,14 +247,14 @@ export const findDashboardPermissionCounts = (matriculaPreceptor) =>
                         (A.IdEmpleado = @Matricula
                             AND (
                                 P.IdPermission IN (
-                                    SELECT A1.IdPermission FROM Authorize A1
+                                    SELECT A1.IdPermission FROM UNIPASS.Authorize A1
                                     GROUP BY A1.IdPermission HAVING COUNT(A1.IdAuthorize) = 1
                                 )
                                 OR P.IdPermission IN (
-                                    SELECT A1.IdPermission FROM Authorize A1
+                                    SELECT A1.IdPermission FROM UNIPASS.Authorize A1
                                     WHERE A1.StatusAuthorize = 'Aprobada'
                                     AND A1.IdAuthorize = (
-                                        SELECT TOP 1 A2.IdAuthorize FROM Authorize A2
+                                        SELECT TOP 1 A2.IdAuthorize FROM UNIPASS.Authorize A2
                                         WHERE A2.IdPermission = A1.IdPermission
                                         ORDER BY A2.IdAuthorize
                                     )
@@ -287,11 +287,11 @@ export const findDashboardDocumentosCounts = (matriculaPreceptor) =>
             .input('Matricula', sql.VarChar, matriculaPreceptor)
             .query(`
                 WITH Empleado AS (
-                    SELECT Dormitorio, TipoUser FROM LoginUniPass WHERE Matricula = @Matricula
+                    SELECT Dormitorio, TipoUser FROM UNIPASS.LoginUniPass WHERE Matricula = @Matricula
                 ),
                 Filtrados AS (
-                    SELECT d.* FROM Doctos d
-                    JOIN LoginUniPass a ON d.IdLogin = a.IdLogin
+                    SELECT d.* FROM UNIPASS.Doctos d
+                    JOIN UNIPASS.LoginUniPass a ON d.IdLogin = a.IdLogin
                     WHERE a.TipoUser = 'ALUMNO'
                       AND (
                           ((SELECT TipoUser FROM Empleado) = 'ADMINISTRATIVO' AND (SELECT Dormitorio FROM Empleado) = 5 AND a.Dormitorio BETWEEN 1 AND 4)
@@ -311,7 +311,7 @@ export const findUserTipoByMatricula = (matricula) =>
     withConnection(async (pool) => {
         const result = await pool.request()
             .input('MatriculaInput', sql.VarChar(20), matricula)
-            .query('SELECT TipoUser FROM LoginUniPass WHERE Matricula = @MatriculaInput');
+            .query('SELECT TipoUser FROM UNIPASS.LoginUniPass WHERE Matricula = @MatriculaInput');
         return result.recordset[0]?.TipoUser || null;
     });
 
@@ -328,9 +328,9 @@ export const filterPermisosAdministrativo = ({ fechaInicio, fechaFin, status, no
             .input('IdEmpleado', sql.Int, idEmpleado)
             .query(`
                 SELECT ${PERMISSION_FIELDS}
-                FROM Permission
-                INNER JOIN TypeExit ON Permission.IdTipoSalida = TypeExit.IdTypeExit
-                INNER JOIN LoginUniPass ON Permission.IdUser = LoginUniPass.IdLogin
+                FROM UNIPASS.Permission
+                INNER JOIN UNIPASS.TypeExit ON Permission.IdTipoSalida = TypeExit.IdTypeExit
+                INNER JOIN UNIPASS.LoginUniPass ON Permission.IdUser = LoginUniPass.IdLogin
                 WHERE
                     (@FechaInicio IS NULL OR Permission.FechaSalida >= @FechaInicio
                                           AND Permission.FechaSalida <  DATEADD(DAY, 1, @FechaInicio)) AND
@@ -358,27 +358,27 @@ export const filterPermisosPreceptor = ({ fechaInicio, fechaFin, status, nombre,
             .query(`
                 WITH PermisosFiltrados AS (
                     SELECT ${PERMISSION_FIELDS}
-                    FROM Permission
-                    INNER JOIN Authorize A ON Permission.IdPermission = A.IdPermission
-                    INNER JOIN TypeExit ON Permission.IdTipoSalida = TypeExit.IdTypeExit
-                    INNER JOIN LoginUniPass ON Permission.IdUser = LoginUniPass.IdLogin
+                    FROM UNIPASS.Permission
+                    INNER JOIN UNIPASS.Authorize A ON Permission.IdPermission = A.IdPermission
+                    INNER JOIN UNIPASS.TypeExit ON Permission.IdTipoSalida = TypeExit.IdTypeExit
+                    INNER JOIN UNIPASS.LoginUniPass ON Permission.IdUser = LoginUniPass.IdLogin
                     WHERE A.IdEmpleado = @IdEmpleado
                       AND Permission.IdPermission IN (
-                          SELECT A1.IdPermission FROM Authorize A1
+                          SELECT A1.IdPermission FROM UNIPASS.Authorize A1
                           GROUP BY A1.IdPermission HAVING COUNT(A1.IdAuthorize) = 1
                       )
                     UNION
                     SELECT ${PERMISSION_FIELDS}
-                    FROM Permission
-                    INNER JOIN Authorize A ON Permission.IdPermission = A.IdPermission
-                    INNER JOIN TypeExit ON Permission.IdTipoSalida = TypeExit.IdTypeExit
-                    INNER JOIN LoginUniPass ON Permission.IdUser = LoginUniPass.IdLogin
+                    FROM UNIPASS.Permission
+                    INNER JOIN UNIPASS.Authorize A ON Permission.IdPermission = A.IdPermission
+                    INNER JOIN UNIPASS.TypeExit ON Permission.IdTipoSalida = TypeExit.IdTypeExit
+                    INNER JOIN UNIPASS.LoginUniPass ON Permission.IdUser = LoginUniPass.IdLogin
                     WHERE A.IdEmpleado = @IdEmpleado
                       AND Permission.IdPermission IN (
-                          SELECT A1.IdPermission FROM Authorize A1
+                          SELECT A1.IdPermission FROM UNIPASS.Authorize A1
                           WHERE A1.StatusAuthorize = 'Aprobada'
                             AND A1.IdAuthorize = (
-                                SELECT TOP 1 A2.IdAuthorize FROM Authorize A2
+                                SELECT TOP 1 A2.IdAuthorize FROM UNIPASS.Authorize A2
                                 WHERE A2.IdPermission = A1.IdPermission
                                 ORDER BY A2.IdAuthorize
                             )
@@ -421,7 +421,7 @@ export const createPermissionRecord = ({
             .input('IdUser', sql.Int, idUser)
             .input('IdTipoSalida', sql.Int, idTipoSalida)
             .input('Observaciones', sql.VarChar, observaciones)
-            .query(`INSERT INTO Permission (FechaSolicitada, StatusPermission, FechaSalida, FechaRegreso, Motivo, IdUser, IdTipoSalida, Observaciones)
+            .query(`INSERT INTO UNIPASS.Permission (FechaSolicitada, StatusPermission, FechaSalida, FechaRegreso, Motivo, IdUser, IdTipoSalida, Observaciones)
                     VALUES (@FechaSolicitada, @StatusPermission, @FechaSalida, @FechaRegreso, @Motivo, @IdUser, @IdTipoSalida, @Observaciones);
                     SELECT SCOPE_IDENTITY() AS IdPermission`);
         return result.recordset[0].IdPermission;
@@ -432,7 +432,7 @@ export const findPermissionByIdempotencyKey = (idempotencyKey) =>
     withConnection(async (pool) => {
         const result = await pool.request()
             .input('Key', sql.NVarChar(80), idempotencyKey)
-            .query('SELECT IdPermission FROM IdempotencyRequest WHERE IdempotencyKey = @Key');
+            .query('SELECT IdPermission FROM UNIPASS.IdempotencyRequest WHERE IdempotencyKey = @Key');
         return result.recordset[0]?.IdPermission ?? null;
     });
 
@@ -447,7 +447,7 @@ export const createPermissionWithChainTx = ({ permission, authorizers, idempoten
             if (idempotencyKey) {
                 const prev = await new sql.Request(tx)
                     .input('Key', sql.NVarChar(80), idempotencyKey)
-                    .query('SELECT IdPermission FROM IdempotencyRequest WHERE IdempotencyKey = @Key');
+                    .query('SELECT IdPermission FROM UNIPASS.IdempotencyRequest WHERE IdempotencyKey = @Key');
                 if (prev.recordset.length > 0) {
                     await tx.commit();
                     return { idPermission: prev.recordset[0].IdPermission, replayed: true };
@@ -463,7 +463,7 @@ export const createPermissionWithChainTx = ({ permission, authorizers, idempoten
                 .input('IdUser', sql.Int, permission.idUser)
                 .input('IdTipoSalida', sql.Int, permission.idTipoSalida)
                 .input('Observaciones', sql.VarChar, 'Ninguna')
-                .query(`INSERT INTO Permission (FechaSolicitada, StatusPermission, FechaSalida, FechaRegreso, Motivo, IdUser, IdTipoSalida, Observaciones)
+                .query(`INSERT INTO UNIPASS.Permission (FechaSolicitada, StatusPermission, FechaSalida, FechaRegreso, Motivo, IdUser, IdTipoSalida, Observaciones)
                         VALUES (@FechaSolicitada, @StatusPermission, @FechaSalida, @FechaRegreso, @Motivo, @IdUser, @IdTipoSalida, @Observaciones);
                         SELECT SCOPE_IDENTITY() AS IdPermission;`);
             const idPermission = permRes.recordset[0].IdPermission;
@@ -474,7 +474,7 @@ export const createPermissionWithChainTx = ({ permission, authorizers, idempoten
                     .input('NoDepto', sql.Int, a.noDepto)
                     .input('IdPermission', sql.Int, idPermission)
                     .input('StatusAuthorize', sql.VarChar, 'Pendiente')
-                    .query(`INSERT INTO Authorize (IdEmpleado, NoDepto, IdPermission, StatusAuthorize)
+                    .query(`INSERT INTO UNIPASS.Authorize (IdEmpleado, NoDepto, IdPermission, StatusAuthorize)
                             VALUES (@IdEmpleado, @NoDepto, @IdPermission, @StatusAuthorize)`);
             }
 
@@ -483,7 +483,7 @@ export const createPermissionWithChainTx = ({ permission, authorizers, idempoten
                     .input('Key', sql.NVarChar(80), idempotencyKey)
                     .input('IdLogin', sql.Int, idLogin)
                     .input('IdPermission', sql.Int, idPermission)
-                    .query(`INSERT INTO IdempotencyRequest (IdempotencyKey, IdLogin, IdPermission)
+                    .query(`INSERT INTO UNIPASS.IdempotencyRequest (IdempotencyKey, IdLogin, IdPermission)
                             VALUES (@Key, @IdLogin, @IdPermission)`);
             }
 
@@ -500,7 +500,7 @@ export const cancelPermissionById = (id) =>
         const result = await pool.request()
             .input('Id', sql.Int, id)
             .input('StatusPermission', sql.VarChar, 'Cancelado')
-            .query('UPDATE Permission SET StatusPermission = @StatusPermission WHERE IdPermission = @Id');
+            .query('UPDATE UNIPASS.Permission SET StatusPermission = @StatusPermission WHERE IdPermission = @Id');
         return result.rowsAffected[0] > 0;
     });
 
@@ -508,7 +508,7 @@ export const deletePermissionById = (id) =>
     withConnection(async (pool) => {
         const result = await pool.request()
             .input('Id', sql.Int, id)
-            .query('DELETE FROM Permission WHERE IdPermission = @Id');
+            .query('DELETE FROM UNIPASS.Permission WHERE IdPermission = @Id');
         return result.rowsAffected[0] > 0;
     });
 
@@ -518,7 +518,7 @@ export const updatePermissionStatus = (id, status, observaciones) =>
             .input('IdPermiso', sql.Int, id)
             .input('StatusPermission', sql.VarChar, status)
             .input('Observaciones', sql.VarChar, observaciones)
-            .query(`UPDATE Permission SET StatusPermission = @StatusPermission, Observaciones = @Observaciones
+            .query(`UPDATE UNIPASS.Permission SET StatusPermission = @StatusPermission, Observaciones = @Observaciones
                     WHERE IdPermission = @IdPermiso`);
         return result.rowsAffected[0] > 0;
     });

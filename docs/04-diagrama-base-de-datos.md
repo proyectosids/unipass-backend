@@ -1,9 +1,15 @@
 # UniPass API — Diagrama de base de datos
 
-Modelo de datos real de la BD **`UNIPASS`** (SQL Server), extraído en vivo del esquema
-(`c492ca6`): **15 tablas, 15 foreign keys**. La tabla de usuarios es **`LoginUniPass`**
-(el archivo `db.sql` del repo está desactualizado; esta es la fuente de verdad).
+Modelo de datos real de la BD **`UNIPASS`** (SQL Server): **15 tablas, 15 foreign keys**.
+Las tablas viven en el **esquema `UNIPASS`** → se referencian como **`UNIPASS.<Tabla>`**
+(ej. `UNIPASS.LoginUniPass`). La tabla de usuarios es **`LoginUniPass`** (fuente de verdad).
 Ver también [03-arquitectura.md](03-arquitectura.md) y [ENDPOINTS.md](ENDPOINTS.md).
+
+**Scripts SQL** (`database/schema/`):
+- `UNIPASS_full_schema.sql` — creación desde cero: BD + esquema `UNIPASS` + 15 tablas con
+  constraints, índices, descripciones (MS_Description) y **datos semilla** (catálogos).
+- `UNIPASS_migrate_dbo_to_schema.sql` — para una BD existente en `dbo`: mueve las tablas al
+  esquema `UNIPASS` con `ALTER SCHEMA TRANSFER` **sin perder datos**.
 
 ## Diagrama entidad-relación (Mermaid)
 

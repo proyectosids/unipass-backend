@@ -26,7 +26,7 @@ export const newUser = async (req, res) => {
     // Verificar si el usuario ya existe
     const checkUser = await pool.request()
       .input('Matricula', sql.VarChar, req.body.Matricula)
-      .query('SELECT * FROM LoginUniPass WHERE Matricula = @Matricula');
+      .query('SELECT * FROM UNIPASS.LoginUniPass WHERE Matricula = @Matricula');
     
     if (checkUser.recordset.length > 0) {
       return res.status(400).json({ message: 'Usuario ya registrado' });
@@ -46,7 +46,7 @@ export const newUser = async (req, res) => {
       .input('StatusActividad', sql.Int, 1)
       .input('Dormitorio', sql.Int, req.body.Dormitorio)
       .query(`
-        INSERT INTO LoginUniPass (Matricula, Contraseña, Correo, Nombre, Apellidos, TipoUser, Sexo, FechaNacimiento, Celular, StatusActividad, Dormitorio)
+        INSERT INTO UNIPASS.LoginUniPass (Matricula, Contraseña, Correo, Nombre, Apellidos, TipoUser, Sexo, FechaNacimiento, Celular, StatusActividad, Dormitorio)
         VALUES (@Matricula, @Contraseña, @Correo, @Nombre, @Apellidos, @TipoUser, @Sexo, @FechaNacimiento, @Celular, @StatusActividad, @Dormitorio);
         SELECT SCOPE_IDENTITY() AS IdLogin
       `);

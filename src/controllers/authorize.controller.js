@@ -27,7 +27,7 @@ const enteroPositivoONull = (valor) => {
 
 // GET /autorizadorSalida?tipo=2|3&nivelAcademico=...&sexo=...
 // Resuelve QUIEN autoriza la salida segun el switch AUTORIZADOR_SALIDAS de
-// dbo.Configuracion (migracion 005), sin fallback silencioso:
+// UNIPASS.Configuracion (migracion 005), sin fallback silencioso:
 //   COORDINADOR -> HIBRIDO: si Configuracion trae COORDINADOR_IDEMPLEADO/NODEPTO
 //                  (override explicito) manda; si estan vacios, se resuelve por rol
 //                  (ADMINISTRATIVO activo de Coordinacion) para auto-heredar el

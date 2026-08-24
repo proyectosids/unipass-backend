@@ -10,7 +10,7 @@ export const findDocumentByLoginAndType = (idLogin, idDocumento) =>
             .request()
             .input('id', sql.Int, idLogin)
             .input('IdDocumento', sql.Int, idDocumento)
-            .query('SELECT Archivo FROM Doctos WHERE IdLogin = @id AND IdDocumento = @IdDocumento');
+            .query('SELECT Archivo FROM UNIPASS.Doctos WHERE IdLogin = @id AND IdDocumento = @IdDocumento');
         return result.recordset[0] || null;
     });
 
@@ -32,9 +32,9 @@ export const findDocumentsByLogin = (idLogin) =>
                     D.FechaRechazo,
                     DC.TipoDocumento,
                     LTRIM(RTRIM(CONCAT(LP.Nombre, ' ', LP.Apellidos))) AS RechazadoPor
-                FROM Doctos D
-                LEFT JOIN DocumentCatalog DC ON DC.IdDocument = D.IdDocumento
-                LEFT JOIN LoginUniPass LP ON LP.Matricula = D.RechazadoPor
+                FROM UNIPASS.Doctos D
+                LEFT JOIN UNIPASS.DocumentCatalog DC ON DC.IdDocument = D.IdDocumento
+                LEFT JOIN UNIPASS.LoginUniPass LP ON LP.Matricula = D.RechazadoPor
                 WHERE D.IdLogin = @Id
             `);
         return result.recordset;
@@ -47,7 +47,7 @@ export const createDocument = ({ idDocumento, archivo, idLogin, statusDoctos = '
         const existing = await pool.request()
             .input('IdLogin', sql.Int, idLogin)
             .input('IdDocumento', sql.Int, idDocumento)
-            .query(`SELECT IdDoctos FROM Doctos
+            .query(`SELECT IdDoctos FROM UNIPASS.Doctos
                     WHERE IdLogin = @IdLogin AND IdDocumento = @IdDocumento`);
 
         if (existing.recordset.length > 0) {
@@ -56,7 +56,7 @@ export const createDocument = ({ idDocumento, archivo, idLogin, statusDoctos = '
                 .input('IdDoctos', sql.Int, existingId)
                 .input('Archivo', sql.VarChar, archivo)
                 .input('StatusDoctos', sql.VarChar, statusDoctos)
-                .query(`UPDATE Doctos
+                .query(`UPDATE UNIPASS.Doctos
                         SET Archivo = @Archivo,
                             StatusDoctos = @StatusDoctos,
                             StatusRevision = 'Pendiente',
@@ -74,7 +74,7 @@ export const createDocument = ({ idDocumento, archivo, idLogin, statusDoctos = '
             .input('Archivo', sql.VarChar, archivo)
             .input('StatusDoctos', sql.VarChar, statusDoctos)
             .input('IdLogin', sql.Int, idLogin)
-            .query(`INSERT INTO Doctos (IdDocumento, Archivo, StatusDoctos, IdLogin)
+            .query(`INSERT INTO UNIPASS.Doctos (IdDocumento, Archivo, StatusDoctos, IdLogin)
                     VALUES (@IdDocumento, @Archivo, @StatusDoctos, @IdLogin);
                     SELECT SCOPE_IDENTITY() AS IdDoctos`);
         if (result.recordset.length === 0) return null;
@@ -88,7 +88,7 @@ export const updateDocumentArchivo = (idLogin, idDocumento, archivo) =>
             .input('IdDocumento', sql.Int, idDocumento)
             .input('Archivo', sql.VarChar, archivo)
             .input('IdLogin', sql.Int, idLogin)
-            .query(`UPDATE Doctos
+            .query(`UPDATE UNIPASS.Doctos
                     SET Archivo = @Archivo,
                         StatusRevision = 'Pendiente',
                         MotivoRechazo = NULL,
@@ -105,7 +105,7 @@ export const deleteDocument = (idLogin, idDocumento) =>
             .request()
             .input('Id', sql.Int, idLogin)
             .input('IdDocumento', sql.Int, idDocumento)
-            .query('DELETE FROM Doctos WHERE IdLogin = @Id AND IdDocumento = @IdDocumento');
+            .query('DELETE FROM UNIPASS.Doctos WHERE IdLogin = @Id AND IdDocumento = @IdDocumento');
         return result.rowsAffected[0] > 0;
     });
 
@@ -116,7 +116,7 @@ export const findDocumentById = (idDoctos) =>
         const result = await pool
             .request()
             .input('IdDoctos', sql.Int, idDoctos)
-            .query('SELECT IdDoctos, IdLogin, Archivo FROM Doctos WHERE IdDoctos = @IdDoctos');
+            .query('SELECT IdDoctos, IdLogin, Archivo FROM UNIPASS.Doctos WHERE IdDoctos = @IdDoctos');
         return result.recordset[0] || null;
     });
 
@@ -125,7 +125,7 @@ export const deleteDocumentById = (idDoctos) =>
         const result = await pool
             .request()
             .input('IdDoctos', sql.Int, idDoctos)
-            .query('DELETE FROM Doctos WHERE IdDoctos = @IdDoctos');
+            .query('DELETE FROM UNIPASS.Doctos WHERE IdDoctos = @IdDoctos');
         return result.rowsAffected[0] > 0;
     });
 
@@ -136,9 +136,9 @@ export const findExpedientesByDormitorio = (idDormitorio) =>
             .input('IdDormitorio', sql.Int, idDormitorio)
             .query(`
                 SELECT DISTINCT L.Matricula, L.Nombre, L.Apellidos
-                FROM Doctos D
-                INNER JOIN DocumentCatalog DC ON DC.IdDocument = D.IdDocumento
-                INNER JOIN LoginUniPass L ON L.IdLogin = D.IdLogin
+                FROM UNIPASS.Doctos D
+                INNER JOIN UNIPASS.DocumentCatalog DC ON DC.IdDocument = D.IdDocumento
+                INNER JOIN UNIPASS.LoginUniPass L ON L.IdLogin = D.IdLogin
                 WHERE L.TipoUser = 'ALUMNO'
                   AND (
                       (@IdDormitorio = 5 AND L.Dormitorio BETWEEN 1 AND 4)
@@ -162,10 +162,10 @@ export const findArchivosFiltered = ({ dormitorio, nombre, apellidos, matricula 
                     Doctos.*,
                     DocumentCatalog.*,
                     LTRIM(RTRIM(CONCAT(LR.Nombre, ' ', LR.Apellidos))) AS NombreRechazadoPor
-                FROM Doctos
-                INNER JOIN DocumentCatalog ON DocumentCatalog.IdDocument = Doctos.IdDocumento
-                INNER JOIN LoginUniPass ON LoginUniPass.IdLogin = Doctos.IdLogin
-                LEFT JOIN LoginUniPass LR ON LR.Matricula = Doctos.RechazadoPor
+                FROM UNIPASS.Doctos
+                INNER JOIN UNIPASS.DocumentCatalog ON DocumentCatalog.IdDocument = Doctos.IdDocumento
+                INNER JOIN UNIPASS.LoginUniPass ON LoginUniPass.IdLogin = Doctos.IdLogin
+                LEFT JOIN UNIPASS.LoginUniPass LR ON LR.Matricula = Doctos.RechazadoPor
                 WHERE DocumentCatalog.Estado = 'Activo'
                   AND (
                       (@Dormitorio = 5 AND LoginUniPass.Matricula = @Matricula)
@@ -185,7 +185,7 @@ export const approveDocument = (idLogin, idDocumento) =>
             .request()
             .input('Id', sql.Int, idLogin)
             .input('IdDocumento', sql.Int, idDocumento)
-            .query("UPDATE Doctos SET StatusRevision = 'Aprobado' WHERE IdLogin = @Id AND IdDocumento = @IdDocumento");
+            .query("UPDATE UNIPASS.Doctos SET StatusRevision = 'Aprobado' WHERE IdLogin = @Id AND IdDocumento = @IdDocumento");
         return result.rowsAffected[0] > 0;
     });
 
@@ -198,7 +198,7 @@ export const rejectDocument = ({ idLogin, idDocumento, motivo, comentario, matri
             .input('Motivo', sql.VarChar(80), motivo)
             .input('Comentario', sql.NVarChar(500), comentario || null)
             .input('Matricula', sql.VarChar(20), matriculaPreceptor)
-            .query(`UPDATE Doctos
+            .query(`UPDATE UNIPASS.Doctos
                     SET StatusRevision = 'Rechazado',
                         MotivoRechazo = @Motivo,
                         ComentarioRechazo = @Comentario,
@@ -216,8 +216,8 @@ export const findRejectNotificationContext = (idLogin, idDocumento) =>
             .input('IdLogin', sql.Int, idLogin)
             .input('IdDocumento', sql.Int, idDocumento)
             .query(`SELECT LP.TokenCFM AS TokenFCM, LP.Matricula, DC.TipoDocumento
-                    FROM LoginUniPass LP
-                    INNER JOIN DocumentCatalog DC ON DC.IdDocument = @IdDocumento
+                    FROM UNIPASS.LoginUniPass LP
+                    INNER JOIN UNIPASS.DocumentCatalog DC ON DC.IdDocument = @IdDocumento
                     WHERE LP.IdLogin = @IdLogin`);
         return result.recordset[0] || null;
     });

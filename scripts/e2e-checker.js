@@ -40,7 +40,7 @@ const stepsDe = (idPermission) => withConnection((pool) =>
                  WHEN cp.Accion='SALIDA'  AND p.NombrePunto='Caseta'     THEN 2
                  WHEN cp.Accion='RETORNO' AND p.NombrePunto='Caseta'     THEN 3
                  WHEN cp.Accion='RETORNO' AND p.NombrePunto='Dormitorio' THEN 4 END AS Paso
-        FROM CheckPoints cp JOIN Point p ON p.IdPoint=cp.IdPoint
+        FROM UNIPASS.CheckPoints cp JOIN UNIPASS.Point p ON p.IdPoint=cp.IdPoint
         WHERE cp.IdPermission=${idPermission} ORDER BY Paso`).then((r) => r.recordset));
 
 const run = async () => {
@@ -117,7 +117,7 @@ const run = async () => {
     // 7) Cleanup: revertir checks confirmados y borrar el grant
     if (revertir.length) {
         await withConnection((pool) => pool.request().query(
-            `UPDATE CheckPoints SET Estatus='Pendiente', FechaCheck=NULL, Observaciones='Ninguna', ConfirmadoPor=NULL
+            `UPDATE UNIPASS.CheckPoints SET Estatus='Pendiente', FechaCheck=NULL, Observaciones='Ninguna', ConfirmadoPor=NULL
              WHERE IdCheck IN (${revertir.join(',')})`));
         console.log('   (checks revertidos a Pendiente)');
     }

@@ -11,14 +11,14 @@ export const createAuthorize = ({ idEmpleado, noDepto, idPermission, statusAutho
         const existing = await pool.request()
             .input('IdPermission', sql.Int, idPermission)
             .input('IdEmpleado', sql.Int, idEmpleado)
-            .query(`SELECT IdAuthorize FROM Authorize
+            .query(`SELECT IdAuthorize FROM UNIPASS.Authorize
                     WHERE IdPermission = @IdPermission AND IdEmpleado = @IdEmpleado`);
 
         if (existing.recordset.length > 0) {
             const existingId = existing.recordset[0].IdAuthorize;
             await pool.request()
                 .input('IdAuthorize', sql.Int, existingId)
-                .query('UPDATE Authorize SET DualRole = 1 WHERE IdAuthorize = @IdAuthorize');
+                .query('UPDATE UNIPASS.Authorize SET DualRole = 1 WHERE IdAuthorize = @IdAuthorize');
             return { id: existingId, dualRoleApplied: true };
         }
 
@@ -27,7 +27,7 @@ export const createAuthorize = ({ idEmpleado, noDepto, idPermission, statusAutho
             .input('NoDepto', sql.Int, noDepto)
             .input('IdPermission', sql.Int, idPermission)
             .input('StatusAuthorize', sql.VarChar, statusAuthorize)
-            .query(`INSERT INTO Authorize (IdEmpleado, NoDepto, IdPermission, StatusAuthorize)
+            .query(`INSERT INTO UNIPASS.Authorize (IdEmpleado, NoDepto, IdPermission, StatusAuthorize)
                     VALUES (@IdEmpleado, @NoDepto, @IdPermission, @StatusAuthorize);
                     SELECT SCOPE_IDENTITY() AS IdAuthorize`);
         if (result.recordset.length === 0) return null;
@@ -44,9 +44,9 @@ export const updateAuthorizeStatus = (idPermiso, idEmpleado, statusAuthorize) =>
             .input('IdPermiso', sql.Int, idPermiso)
             .input('IdEmpleado', sql.Int, idEmpleado)
             .input('StatusAuthorize', sql.VarChar, statusAuthorize)
-            .query(`UPDATE Authorize ${setClause}
+            .query(`UPDATE UNIPASS.Authorize ${setClause}
                     WHERE IdAuthorize = (
-                        SELECT TOP 1 IdAuthorize FROM Authorize
+                        SELECT TOP 1 IdAuthorize FROM UNIPASS.Authorize
                         WHERE IdPermission = @IdPermiso AND IdEmpleado = @IdEmpleado
                         ORDER BY IdAuthorize
                     )`);
@@ -59,7 +59,7 @@ export const findUpdatedAuthorize = (idPermiso, idEmpleado, statusAuthorize) =>
             .input('IdPermiso', sql.Int, idPermiso)
             .input('IdEmpleado', sql.Int, idEmpleado)
             .input('StatusAuthorize', sql.VarChar, statusAuthorize)
-            .query(`SELECT * FROM Authorize
+            .query(`SELECT * FROM UNIPASS.Authorize
                     WHERE IdPermission = @IdPermiso
                       AND IdEmpleado = @IdEmpleado
                       AND StatusAuthorize = @StatusAuthorize
@@ -71,7 +71,7 @@ export const findNextPendingEmpleado = (idPermission) =>
     withConnection(async (pool) => {
         const result = await pool.request()
             .input('IdPermisoChain', sql.Int, idPermission)
-            .query(`SELECT TOP 1 IdEmpleado FROM Authorize
+            .query(`SELECT TOP 1 IdEmpleado FROM UNIPASS.Authorize
                     WHERE IdPermission = @IdPermisoChain
                       AND StatusAuthorize = 'Pendiente'
                     ORDER BY IdAuthorize`);
@@ -83,7 +83,7 @@ export const findAuthorizeByEmpleadoAndPermiso = (idEmpleado, idPermiso) =>
         const result = await pool.request()
             .input('IdEmpleado', sql.Int, idEmpleado)
             .input('IdPermiso', sql.Int, idPermiso)
-            .query('SELECT * FROM Authorize WHERE IdEmpleado = @IdEmpleado AND IdPermission = @IdPermiso');
+            .query('SELECT * FROM UNIPASS.Authorize WHERE IdEmpleado = @IdEmpleado AND IdPermission = @IdPermiso');
         return result.recordset[0] || null;
     });
 
@@ -108,8 +108,8 @@ export const findAllAuthorizeByPermission = (idPermission) =>
                         END AS Rol,
                         LTRIM(RTRIM(CONCAT(L.Nombre, ' ', L.Apellidos))) AS NombreAprobador,
                         ROW_NUMBER() OVER (ORDER BY A.IdAuthorize) AS Orden
-                    FROM Authorize A
-                    LEFT JOIN LoginUniPass L ON L.Matricula = CAST(A.IdEmpleado AS VARCHAR(20))
+                    FROM UNIPASS.Authorize A
+                    LEFT JOIN UNIPASS.LoginUniPass L ON L.Matricula = CAST(A.IdEmpleado AS VARCHAR(20))
                     WHERE A.IdPermission = @Id
                     ORDER BY A.IdAuthorize`);
         return result.recordset;
