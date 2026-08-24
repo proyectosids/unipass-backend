@@ -46,14 +46,14 @@ d('Task 7.1.B recuperación por matrícula (integración)', () => {
             user: process.env.DB_USER, password: process.env.DB_PASSWORD, server: process.env.DB_SERVER, database: process.env.DB_DATABASE,
             options: { encrypt: process.env.DB_ENCRYPT === 'true', trustServerCertificate: process.env.DB_TRUST_CERT === 'true' }
         });
-        const u = (await pool.request().input('id', sql.Int, 1).query('SELECT IdLogin, Matricula, Contraseña FROM LoginUniPass WHERE IdLogin=@id')).recordset[0];
+        const u = (await pool.request().input('id', sql.Int, 1).query('SELECT IdLogin, Matricula, Contraseña FROM UNIPASS.LoginUniPass WHERE IdLogin=@id')).recordset[0];
         idLogin = u.IdLogin; matricula = u.Matricula; hashOriginal = u.Contraseña;
     });
 
     afterAll(async () => {
         await pool.request().input('id', sql.Int, idLogin).input('h', sql.VarChar, hashOriginal)
-            .query('UPDATE LoginUniPass SET Contraseña=@h WHERE IdLogin=@id');
-        await pool.request().input('id', sql.Int, idLogin).query('DELETE FROM PasswordReset WHERE IdLogin=@id');
+            .query('UPDATE UNIPASS.LoginUniPass SET Contraseña=@h WHERE IdLogin=@id');
+        await pool.request().input('id', sql.Int, idLogin).query('DELETE FROM UNIPASS.PasswordReset WHERE IdLogin=@id');
         await pool?.close();
     });
 
@@ -65,7 +65,7 @@ d('Task 7.1.B recuperación por matrícula (integración)', () => {
             .input('id', sql.Int, idLogin).input('h', sql.NVarChar(128), sha256(token))
             .input('exp', sql.DateTime, new Date(Date.now() + expiraEnMs))
             .input('usado', sql.DateTime, usado ? new Date() : null)
-            .query('INSERT INTO PasswordReset (IdLogin, ResetTokenHash, ExpiraEn, UsadoEn) VALUES (@id,@h,@exp,@usado)');
+            .query('INSERT INTO UNIPASS.PasswordReset (IdLogin, ResetTokenHash, ExpiraEn, UsadoEn) VALUES (@id,@h,@exp,@usado)');
         return token;
     };
 
@@ -108,7 +108,7 @@ d('Task 7.1.B recuperación por matrícula (integración)', () => {
         expect(typeof res.body.resetToken).toBe('string');
         expect(otpProvider.verifyOtp).toHaveBeenCalledWith(EMAIL_INST, '123456');
         const row = (await pool.request().input('h', sql.NVarChar(128), sha256(res.body.resetToken))
-            .query('SELECT IdLogin FROM PasswordReset WHERE ResetTokenHash=@h')).recordset[0];
+            .query('SELECT IdLogin FROM UNIPASS.PasswordReset WHERE ResetTokenHash=@h')).recordset[0];
         expect(row.IdLogin).toBe(idLogin); // ligado al IdLogin correcto
     });
 
@@ -148,7 +148,7 @@ d('Task 7.1.B recuperación por matrícula (integración)', () => {
         const token = await crearReset();
         const res = await request(app).post('/password/reset').send({ resetToken: token, nueva: 'corta' });
         expect(res.status).toBe(400); expect(res.body.code).toBe('WEAK_PASSWORD');
-        const row = (await pool.request().input('h', sql.NVarChar(128), sha256(token)).query('SELECT UsadoEn FROM PasswordReset WHERE ResetTokenHash=@h')).recordset[0];
+        const row = (await pool.request().input('h', sql.NVarChar(128), sha256(token)).query('SELECT UsadoEn FROM UNIPASS.PasswordReset WHERE ResetTokenHash=@h')).recordset[0];
         expect(row.UsadoEn).toBeNull();
     });
 
@@ -156,7 +156,7 @@ d('Task 7.1.B recuperación por matrícula (integración)', () => {
         const token = await crearReset();
         const r1 = await request(app).post('/password/reset').send({ resetToken: token, nueva: 'NuevaPass123' });
         expect(r1.status).toBe(200);
-        const nuevoHash = (await pool.request().input('id', sql.Int, idLogin).query('SELECT Contraseña FROM LoginUniPass WHERE IdLogin=@id')).recordset[0].Contraseña;
+        const nuevoHash = (await pool.request().input('id', sql.Int, idLogin).query('SELECT Contraseña FROM UNIPASS.LoginUniPass WHERE IdLogin=@id')).recordset[0].Contraseña;
         expect(nuevoHash).not.toBe(hashOriginal);
         const r2 = await request(app).post('/password/reset').send({ resetToken: token, nueva: 'OtraPass123' });
         expect(r2.status).toBe(400); expect(r2.body.code).toBe('RESET_TOKEN_USED');

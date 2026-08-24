@@ -22,11 +22,11 @@ d('Task 7.2 ownership (integración)', () => {
             options: { encrypt: process.env.DB_ENCRYPT === 'true', trustServerCertificate: process.env.DB_TRUST_CERT === 'true' }
         });
         const getUser = async (id) => (await pool.request().input('id', sql.Int, id)
-            .query('SELECT IdLogin, Matricula, Nombre, Apellidos, TipoUser, Dormitorio FROM LoginUniPass WHERE IdLogin=@id')).recordset[0];
+            .query('SELECT IdLogin, Matricula, Nombre, Apellidos, TipoUser, Dormitorio FROM UNIPASS.LoginUniPass WHERE IdLogin=@id')).recordset[0];
         tokenA = generateAccessToken(await getUser(1));      // dueño
         tokenB = generateAccessToken(await getUser(2064));   // otro usuario
-        permisoDeA = (await pool.request().query('SELECT TOP 1 IdPermission FROM Permission WHERE IdUser=1 ORDER BY IdPermission DESC')).recordset[0]?.IdPermission;
-        doctoDeA = (await pool.request().query('SELECT TOP 1 IdDoctos FROM Doctos WHERE IdLogin=1 ORDER BY IdDoctos DESC')).recordset[0]?.IdDoctos;
+        permisoDeA = (await pool.request().query('SELECT TOP 1 IdPermission FROM UNIPASS.Permission WHERE IdUser=1 ORDER BY IdPermission DESC')).recordset[0]?.IdPermission;
+        doctoDeA = (await pool.request().query('SELECT TOP 1 IdDoctos FROM UNIPASS.Doctos WHERE IdLogin=1 ORDER BY IdDoctos DESC')).recordset[0]?.IdDoctos;
     });
 
     afterAll(async () => { await pool?.close(); });

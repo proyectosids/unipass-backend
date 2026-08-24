@@ -44,21 +44,21 @@ d('Task 7.4A POST /permission Pueblo (integración)', () => {
             options: { encrypt: process.env.DB_ENCRYPT === 'true', trustServerCertificate: process.env.DB_TRUST_CERT === 'true' }
         });
         const u = (await pool.request().input('id', sql.Int, 1)
-            .query('SELECT IdLogin,Matricula,Nombre,Apellidos,TipoUser,Dormitorio FROM LoginUniPass WHERE IdLogin=@id')).recordset[0];
+            .query('SELECT IdLogin,Matricula,Nombre,Apellidos,TipoUser,Dormitorio FROM UNIPASS.LoginUniPass WHERE IdLogin=@id')).recordset[0];
         tokenAlumno = generateAccessToken(u); // alumno IdLogin 1, dorm 4
     });
 
     afterAll(async () => {
         for (const id of creados) {
-            await pool.request().input('id', sql.Int, id).query('DELETE FROM Authorize WHERE IdPermission=@id');
-            await pool.request().input('id', sql.Int, id).query('DELETE FROM IdempotencyRequest WHERE IdPermission=@id');
-            await pool.request().input('id', sql.Int, id).query('DELETE FROM Permission WHERE IdPermission=@id');
+            await pool.request().input('id', sql.Int, id).query('DELETE FROM UNIPASS.Authorize WHERE IdPermission=@id');
+            await pool.request().input('id', sql.Int, id).query('DELETE FROM UNIPASS.IdempotencyRequest WHERE IdPermission=@id');
+            await pool.request().input('id', sql.Int, id).query('DELETE FROM UNIPASS.Permission WHERE IdPermission=@id');
         }
         await pool?.close();
     });
 
     const authRows = async (idP) => (await pool.request().input('id', sql.Int, idP)
-        .query('SELECT IdEmpleado, NoDepto, StatusAuthorize FROM Authorize WHERE IdPermission=@id ORDER BY IdAuthorize')).recordset;
+        .query('SELECT IdEmpleado, NoDepto, StatusAuthorize FROM UNIPASS.Authorize WHERE IdPermission=@id ORDER BY IdAuthorize')).recordset;
 
     beforeEach(() => { vi.clearAllMocks(); });
 
@@ -192,7 +192,7 @@ d('Task 7.4A POST /permission Pueblo (integración)', () => {
 
     it('Rollback: error SQL en Authorize -> 0 Permission, 0 Authorize (repo)', async () => {
         const antes = (await pool.request().input('u', sql.Int, 1)
-            .query('SELECT COUNT(*) n FROM Permission WHERE IdUser=@u AND IdTipoSalida=1')).recordset[0].n;
+            .query('SELECT COUNT(*) n FROM UNIPASS.Permission WHERE IdUser=@u AND IdTipoSalida=1')).recordset[0].n;
         // idEmpleado fuera de rango INT -> falla el INSERT de Authorize -> ROLLBACK.
         await expect(createPermissionWithChainTx({
             permission: { fechaSolicitada: new Date().toISOString(), statusPermission: 'Pendiente', fechaSalida: new Date().toISOString(), fechaRegreso: new Date().toISOString(), motivo: 'rollback', idUser: 1, idTipoSalida: 1 },
@@ -200,7 +200,7 @@ d('Task 7.4A POST /permission Pueblo (integración)', () => {
             idLogin: 1
         })).rejects.toBeTruthy();
         const despues = (await pool.request().input('u', sql.Int, 1)
-            .query('SELECT COUNT(*) n FROM Permission WHERE IdUser=@u AND IdTipoSalida=1')).recordset[0].n;
+            .query('SELECT COUNT(*) n FROM UNIPASS.Permission WHERE IdUser=@u AND IdTipoSalida=1')).recordset[0].n;
         expect(despues).toBe(antes);
     });
 });
