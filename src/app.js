@@ -13,6 +13,8 @@ import positionRoutes from "./routes/position.routes.js"
 import checkerGrantRoutes from "./routes/checkerGrant.routes.js"
 import adminRoutes from "./routes/admin.routes.js"
 import passwordRoutes from "./routes/password.routes.js"
+import swaggerUi from 'swagger-ui-express';
+import { openapiSpec } from './docs/openapi.js';
 import morgan from 'morgan';
 
 
@@ -27,6 +29,10 @@ app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
 // Servir archivos estáticos
 app.use(express.static('public'));
+
+// Documentación interactiva (Swagger UI) + spec cruda OpenAPI
+app.get('/api-docs.json', (req, res) => res.json(openapiSpec));
+app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(openapiSpec, { customSiteTitle: 'UniPass API — Docs' }));
 
 app.use(usersRoutes);
 

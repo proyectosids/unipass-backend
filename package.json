@@ -23,7 +23,8 @@
     "morgan": "^1.10.0",
     "mssql": "^11.0.0",
     "multer": "^2.1.1",
-    "socket.io": "^4.8.3"
+    "socket.io": "^4.8.3",
+    "swagger-ui-express": "^5.0.1"
   },
   "devDependencies": {
     "nodemon": "^3.1.4",

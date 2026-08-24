@@ -6,6 +6,9 @@ Contrato OTP externo en [otp-service-contract.md](otp-service-contract.md).
 
 - **Base URL:** `http://<host>:<PORT>` (rutas montadas en la raíz, sin prefijo `/api`).
 - **Auth:** `🔒` = requiere `Authorization: Bearer <accessToken>`. `🔒ADMIN`/`🔒SUP` = además capability. `—` = abierto (ver deuda técnica en API.md §14).
+- **Documentación interactiva (Swagger UI):** con el servidor arriba, `http://<host>:<PORT>/api-docs`
+  (spec cruda en `/api-docs.json`). Prueba los endpoints desde el navegador: corre `login`, pulsa
+  **Authorize** y pega el `accessToken`. Fuente: `src/docs/openapi.js`.
 - Colección Postman lista para importar: `postman/UniPass-API.postman_collection.json`.
 
 ## Sesión y usuarios (`user.routes.js`, `resgister.routes.js`)
