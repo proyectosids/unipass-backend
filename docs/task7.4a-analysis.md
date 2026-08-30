@@ -98,15 +98,25 @@ de negocio a cerrar: ¿Pueblo con alumno sin `work` es (a) **error controlado**
 (solo preceptor)? La regla §0 asume que siempre hay jefe → por defecto se propone (a) error,
 pero requiere confirmación.
 
-## 4. Resolución del COORDINADOR (entregable §6)
+## 4. Resolución del COORDINADOR — ⚠️ SON DOS COORDINADORES DISTINTOS (aclaración 2026-08-29)
 ```
 GET /api/datos/coordinador/<matricula alumno> → { empMatricula, IdDepartamento }
 ```
-Verificado: `coordinador/221068 → {empMatricula:"366", IdDepartamento:214}` → coordinador
-matrícula **366** (Iván, EMPLEADO, IdLogin 9 en UniPass). **🚩 Discrepancia con el diseño
-actual de tipo 2/3:** hoy el switch `AUTORIZADOR_SALIDAS='COORDINADOR'` usa un coordinador
-**global** (264 Teresa, `ADMINISTRATIVO` dorm 5), pero API-ULV da un coordinador **por
-alumno** (366). A reconciliar antes de mover tipo 2/3 a API-ULV (decisión de dominio).
+Verificado: `coordinador/221068 → {empMatricula:"366", IdDepartamento:214}` → matrícula **366**
+(Iván). **Este es el COORDINADOR DE FACULTAD/CARRERA del alumno**, y corresponde al flujo de
+**FIN DE CURSO (Tipo 4)**.
+
+**NO confundir con el "coordinador de dormitorios":** son roles diferentes para propósitos
+diferentes.
+- **Coordinador de dormitorios** = cuenta `ADMINISTRATIVO` interna (264 Teresa, `Bedroom`
+  COORDINACIÓN dorm 5), resuelta por el switch `AUTORIZADOR_SALIDAS` / `findCoordinadorActivo`.
+  Autoriza salidas **ESPECIAL (2)** y **A CASA (3)** y es el `idCoordinador` del panel `/admin/dashboard`.
+- **Coordinador de facultad/carrera** = `getStudentCoordinator` (API-ULV, `366` en el ejemplo).
+  Para **FIN DE CURSO (Tipo 4)**. NO interviene en tipos 2/3.
+
+⇒ Lo que antes aquí se llamó "discrepancia de coordinador para tipo 2/3" era una **confusión
+de los dos roles**: el `coordinador/:matricula` de API-ULV **no** compite por las salidas 2/3;
+su lugar es el flujo de Tipo 4. El coordinador de tipo 2/3 sigue siendo el de dormitorios (264).
 
 ## 5. Cadenas por tipo (entregables §7/§8/§9)
 
@@ -125,12 +135,13 @@ alumno** (366). A reconciliar antes de mover tipo 2/3 a API-ULV (decisión de do
 
 **Tipo 2 — Especial / Tipo 3 — A casa (comportamiento ACTUAL documentado):**
 - Hoy resueltos por el híbrido `GET /autorizadorSalida` + switch `AUTORIZADOR_SALIDAS`
-  (`Configuracion`): modo `COORDINADOR` → coordinador local (264), modo `PRECEPTOR` →
-  preceptor del dorm. 1 solo eslabón. Ver [[autorizador-salidas-switch]].
-- **Server-side futuro (propuesto):** el coordinador debería salir de
-  `coordinador/:matricula` (API-ULV, por alumno) en modo COORDINADOR — **pero** eso choca
-  con el coordinador global actual (§4). **No se cambia en este pase**; se documenta y se
-  decide antes de tocar tipo 2/3.
+  (`Configuracion`): modo `COORDINADOR` → **coordinador de dormitorios** (264, ADMINISTRATIVO),
+  modo `PRECEPTOR` → preceptor del dorm. 1 solo eslabón. Ver [[autorizador-salidas-switch]].
+- El coordinador de tipo 2/3 es y seguirá siendo el **de dormitorios**. El
+  `coordinador/:matricula` de API-ULV (facultad/carrera) **no** aplica aquí; es para Tipo 4 (§4).
+
+**Tipo 4 — Fin de curso:** aquí sí entra el **coordinador de facultad/carrera** vía
+`getStudentCoordinator` (API-ULV). Flujo aún sin diseñar (`PENDING_FLOW_ANALYSIS_TYPE_4`).
 
 ## 6. Capa `UlvApiService` (entregable §7)
 Abstracción única (no dispersar HTTP en controladores). Base URL desde `ULV_API_URL`
@@ -230,4 +241,6 @@ análisis/diseño. `POST /authorize`, `PUT /autorizarPermission/:Id`,
 ## 13. Decisiones de dominio a cerrar antes de implementar
 1. Pueblo con alumno **sin `work`** → ¿error o preceptor-solo? (§3)
 2. `work.ID JEFE` vs `JefeDepto.EmpMatricula` en caso de discrepancia → ¿siempre JefeDepto? (§3)
-3. Tipo 2/3: coordinador **por alumno** (API-ULV, 366) vs **global** actual (264) → ¿cuál rige? (§4)
+3. ~~Tipo 2/3: coordinador por-alumno vs global~~ — **RESUELTO/aclarado (2026-08-29):** no había
+   discrepancia; eran dos roles distintos. Tipo 2/3 usa el **coordinador de dormitorios** (264);
+   el `coordinador/:matricula` de API-ULV es el **de facultad/carrera**, para **Tipo 4** (§4).

@@ -63,5 +63,9 @@ export const getDepartmentHead = (idDepto) => getJson(`/api/datos/JefeDepto/${en
 export const validateDepartmentHead = (matricula) => getJson(`/api/datos/getjefe/${encodeURIComponent(matricula)}`);
 
 // GET /api/datos/coordinador/:matricula -> { empMatricula, IdDepartamento } | null
-// Infra lista, pero NO se usa productivamente para tipo 2/3 (PENDING_DOMAIN_DECISION_COORDINATOR_TYPE_2_3).
+// OJO: este es el COORDINADOR DE FACULTAD/CARRERA del alumno (dato institucional de
+// API-ULV), destinado al flujo de FIN DE CURSO (Tipo 4). NO es el "coordinador de
+// dormitorios" (ese es una cuenta ADMINISTRATIVO interna de UniPass, resuelta por el
+// switch AUTORIZADOR_SALIDAS / findCoordinadorActivo, para salidas Especial(2)/A Casa(3)).
+// Infra lista; Tipo 4 aun sin implementar (PENDING_FLOW_ANALYSIS_TYPE_4).
 export const getStudentCoordinator = (matricula) => getJson(`/api/datos/coordinador/${encodeURIComponent(matricula)}`);
