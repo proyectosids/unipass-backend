@@ -43,3 +43,14 @@ describe('Task 7.1 PUT /me/password: gating', () => {
         expect(res.status).toBe(401);
     });
 });
+
+describe('P0 POST /register: gating (sin DB)', () => {
+    it('sin token -> 401', async () => {
+        const res = await request(app).post('/register').send({ Matricula: 'X1', TipoUser: 'ADMINISTRATIVO' });
+        expect(res.status).toBe(401);
+    });
+    it('token inválido -> 401', async () => {
+        const res = await request(app).post('/register').set('Authorization', 'Bearer basura').send({ Matricula: 'X1', TipoUser: 'ALUMNO' });
+        expect(res.status).toBe(401);
+    });
+});

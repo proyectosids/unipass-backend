@@ -2,19 +2,34 @@ import { getConnection } from "../database/connection.js";
 import { hashData, VerifyHashData } from '../util/hashData.js';
 import sql from 'mssql';
 
+// Allowlist server-side de TipoUser que un ADMIN puede crear por este endpoint.
+// NO incluye 'ADMINISTRATIVO' a proposito: crear una cuenta ADMINISTRATIVO otorga la
+// capability ADMIN (requireCapability deriva ADMINISTRATIVO -> ADMIN), asi que ese alta
+// NO debe ser self-serve por API ni siquiera para un ADMIN (aprovisionar por BD/DBA).
+// 'DEPARTAMENTO' esta retirado. Cambiar esta lista es una decision de dominio.
+const TIPOS_PERMITIDOS = new Set(['ALUMNO', 'EMPLEADO', 'PRECEPTOR', 'VIGILANCIA']);
+
 export const newUser = async (req, res) => {
   let pool;
 
   try {
-    console.log('Solicitud recibida:', req.body);  // Depuración
+    // Nota: la ruta ya exige verifyToken + requireCapability(['ADMIN']); aqui solo se
+    // valida el TipoUser contra la allowlist (no se confia en el body para el tipo).
+    const tipo = req.body.TipoUser;
 
-    // El modelo de "checker como cuenta dedicada" (TipoUser='DEPARTAMENTO') fue
-    // retirado. Un checker ahora es una capability (CheckerGrant) sobre una cuenta
-    // real existente. Se rechaza la creacion de nuevas cuentas DEPARTAMENTO.
-    if (req.body.TipoUser === 'DEPARTAMENTO') {
+    // El modelo de checker dedicado (TipoUser='DEPARTAMENTO') fue retirado.
+    if (tipo === 'DEPARTAMENTO') {
       return res.status(400).json({
         message: 'El rol DEPARTAMENTO fue retirado. Asigna la capability de checker con POST /checkerGrant.',
         code: 'DEPARTAMENTO_RETIRED'
+      });
+    }
+
+    // Allowlist: cualquier TipoUser fuera de la lista (incluido ADMINISTRATIVO) se rechaza.
+    if (!TIPOS_PERMITIDOS.has(tipo)) {
+      return res.status(403).json({
+        message: `TipoUser no permitido para creacion de cuenta: ${tipo ?? '(vacío)'}`,
+        code: 'TIPOUSER_NOT_ALLOWED'
       });
     }
 
@@ -53,14 +68,14 @@ export const newUser = async (req, res) => {
 
     if (respuesta.recordset.length > 0) {
       const insertedUser = respuesta.recordset[0];
-      res.json({
+      // Respuesta saneada: NO se devuelve el hash de contraseña (ni TokenCFM/tokens).
+      res.status(201).json({
         IdLogin: insertedUser.IdLogin,
         Matricula: req.body.Matricula,
-        Contraseña: hashedPassword,
         Correo: req.body.Correo,
         Nombre: req.body.Nombre,
         Apellidos: req.body.Apellidos,
-        TipoUser: req.body.TipoUser,
+        TipoUser: tipo,
         Sexo: req.body.Sexo,
         FechaNacimiento: req.body.FechaNacimiento,
         Celular: req.body.Celular,
