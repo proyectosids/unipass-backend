@@ -1,8 +1,9 @@
-# UniPass — Matriz de permisos (DISEÑO · FASE B)
+# UniPass — Matriz de permisos
 
-> **Estado: DISEÑO propuesto, NO implementado.** Acompaña a [authorization-model.md](authorization-model.md).
-> Los permisos/roles aquí son el modelo objetivo; hoy en producción solo existen las capabilities
-> CHECKER/SUPERVISOR/ADMIN(derivado) — ver [../ENDPOINTS.md](../ENDPOINTS.md) para el estado real.
+> **Estado: FASE C (infra + piloto) implementada (2026-08-30).** Acompaña a
+> [authorization-model.md](authorization-model.md). Las capabilities se guardan en **`CapabilityGrant`**
+> (tabla nueva). Solo `/admin/*` está **migrado** al nuevo modelo (permiso+scope); el resto sigue legacy.
+> Marcado por endpoint: **✅MIGRADO** / **⚠️legacy** / **⏳abierto**.
 
 ## 1. Capability → Permisos → Scope
 
@@ -75,8 +76,8 @@ Notas:
 ### Admin / Reportes / Capabilities / Config / Auditoría
 | M | Endpoint | Permiso | Scope | Hoy |
 |---|---|---|---|---|
-| GET | /admin/dashboard | DASHBOARD_VIEW | GLOBAL/DORMITORIO | ✅ ADMIN\|SUPERVISOR |
-| GET | /admin/reporte, /admin/observaciones | REPORTS_VIEW | GLOBAL | ✅ ADMIN\|SUPERVISOR |
+| GET | /admin/dashboard | DASHBOARD_VIEW | GLOBAL | **✅MIGRADO** (requirePermission+scope) |
+| GET | /admin/reporte, /admin/observaciones | REPORTS_VIEW | GLOBAL | **✅MIGRADO** |
 | GET | /getCapabilities | (self) | SELF | ✅ token |
 | POST/GET/PUT/DELETE | /checkerGrant* | CAPABILITIES_MANAGE / _VIEW | DORMITORIO/institucional | ✅ rol PRECEPTOR/VIGILANCIA |
 | POST/DELETE | /supervisorGrant* | CAPABILITIES_MANAGE | GLOBAL | ✅ ADMIN |

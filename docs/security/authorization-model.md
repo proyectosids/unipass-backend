@@ -1,9 +1,14 @@
-# UniPass — Modelo de autorización (DISEÑO · FASE A+B)
+# UniPass — Modelo de autorización
 
-> **Estado: DISEÑO para revisión.** Contiene el análisis del modelo actual (FASE A) y el
-> diseño propuesto (FASE B). **NO implementado en producción todavía** — pendiente de tu
-> aprobación para FASE C (implementación). No mezcla password legacy, 7.4B, revisión
-> documental ni BOLA de lecturas (solo se referencian para la matriz endpoint→permiso).
+> **Estado: FASE A+B (análisis/diseño) + FASE C (infra + piloto) IMPLEMENTADAS.**
+> - FASE A (análisis del modelo actual) y FASE B (diseño) — abajo.
+> - **FASE C implementada (2026-08-30):** ver sección **"FASE C — IMPLEMENTADO"** al final.
+>   Tabla nueva `CapabilityGrant`, catálogo de permisos, `requirePermission`/`validateScope`,
+>   auditoría `AuditLog`, `permissions[]` aditivo en `/getCapabilities`, y **piloto `/admin/*`**
+>   migrado al nuevo modelo. El resto de endpoints sigue en autorización legacy.
+> - **Decisión clave:** las capabilities se guardan en **`CapabilityGrant`** (tabla genérica),
+>   NO extendiendo `CheckerGrant`.
+> No mezcla password legacy, 7.4B, revisión documental ni BOLA de lecturas.
 
 ---
 
@@ -140,12 +145,14 @@ Bajo `src/Middleware/`:
 - `requireCapability`/`requireRole`/`requireOwnership` se **conservan** como adaptadores durante la
   migración (compat), y se re-expresan encima del nuevo modelo cuando cada endpoint se migre.
 
-## B.6 SUPERADMIN
-- **Se implementa como capability** en `CheckerGrant.Capability` (extender el CHECK a incluir
-  `'ADMIN'` y `'SUPERADMIN'`). Una fila SUPERADMIN: `Capability='SUPERADMIN', Tipo=NULL, IdDormitorio=NULL,
-  Scope='AMBOS'(relleno), Activo=1, Vigencia='PERMANENTE'`. Reusa toda la maquinaria de grants.
+## B.6 SUPERADMIN  (decisión revisada: CapabilityGrant, no CheckerGrant)
+- **Se implementa como capability** en la **tabla nueva `CapabilityGrant`** (`Capability='SUPERADMIN',
+  ScopeType='GLOBAL', ScopeId=NULL, Activo=1`). No se extiende `CheckerGrant` (evita deuda semántica).
 - Scope **GLOBAL**, resuelve a **todos** los permisos.
 - **Nunca** es un `TipoUser`; `POST /register` jamás lo acepta ni lo produce.
+- **No hay API** para otorgar SUPERADMIN; el primer grant se hace con el script controlado
+  `database/scripts/grant_superadmin.sql` (parametrizado, no automático, tras autorización). Un ADMIN
+  normal no puede otorgarlo.
 - Puede realizar acciones administrativas globales; sus operaciones sensibles se **auditan** (B.9).
 
 ## B.7 Aprovisionamiento inicial de SUPERADMIN (punto 9)
@@ -205,21 +212,44 @@ SUPERADMIN real). No se reemplaza la identidad. **No implementar** salvo que se 
 
 ---
 
-# Cambios de BD propuestos (para FASE C, NO aplicados)
-1. **Migración 012** — `ALTER` del CHECK de `CheckerGrant.Capability` para permitir `'ADMIN'`,`'SUPERADMIN'`
-   (idempotente; drop+recreate del constraint). Rollback: recrear el CHECK anterior. Datos afectados: ninguno
-   (solo amplía valores válidos).
-2. **Migración 013** — tabla `AuditLog` (idempotente `IF OBJECT_ID IS NULL`). Rollback: `DROP TABLE`.
-3. **Script parametrizado** — otorgar SUPERADMIN a un `IdLogin` indicado (no automático).
+# FASE C — IMPLEMENTADO (2026-08-30)
 
-# Archivos nuevos/modificados propuestos (para FASE C)
-- Nuevo: `src/security/permissions.js` (catálogo + mapping + resolvePermissions).
-- Nuevo: `src/Middleware/requirePermission.js`, `src/Middleware/validateScope.js`.
-- Nuevo: `src/services/audit.service.js` + `src/repositories/audit.repo.js`.
-- Modificar (compat): `requireCapability.js` (expresarlo sobre permisos), `checkerGrant.repo.js`
-  (soportar ADMIN/SUPERADMIN en grants/capabilities), `getCapabilities` (añadir `permissions[]`).
-- Rediseñar: `register.controller.js` + `resgister.routes.js` (autoregistro con TipoUser desde ULV).
-- Migraciones `012`, `013` + script SUPERADMIN.
+## Migraciones (aplicadas, idempotentes)
+1. **`011_capability_grant.sql`** — tabla **`CapabilityGrant`** (`IdGrant, IdLogin, Capability
+   ∈{CHECKER,SUPERVISOR,ADMIN,SUPERADMIN}, ScopeType ∈{SELF,DORMITORIO,GLOBAL}, ScopeId, Activo,
+   GrantedBy, CreatedAt, RevokedAt`) + índice + **copia idempotente** de los grants CHECKER/SUPERVISOR
+   activos desde `CheckerGrant`. Rollback: `DROP TABLE UNIPASS.CapabilityGrant;` (no toca CheckerGrant).
+   Datos afectados: inserta 4 grants (3 CHECKER, 1 SUPERVISOR) reflejando los activos actuales.
+2. **`012_audit_log.sql`** — tabla **`AuditLog`**. Rollback: `DROP TABLE UNIPASS.AuditLog;`. Sin datos afectados.
+3. **`database/scripts/grant_superadmin.sql`** — otorgar SUPERADMIN a un `IdLogin` indicado.
+   **NO ejecutado** (parametrizado, requiere autorización; con `@IdLogin=NULL` no hace nada).
+
+## Código nuevo
+- `src/security/permissions.js` — catálogo `PERMISSIONS`, `SCOPES`, `CAPABILITY_PERMISSIONS`, `resolvePermissions`.
+- `src/repositories/capabilityGrant.repo.js` — único lugar que conoce la tabla física.
+- `src/services/capability.service.js` — `getCapabilitiesForUser`, `hasCapability`, `getScopesForUser`,
+  `getPermissionsForUser`, `scopeCovers`. Incluye el **puente transitorio ADMINISTRATIVO→ADMIN (GLOBAL)**.
+- `src/Middleware/requirePermission.js` (403 `FORBIDDEN_PERMISSION`), `src/Middleware/validateScope.js`
+  + `requireGlobalScope` (403 `FORBIDDEN_SCOPE`).
+- `src/repositories/audit.repo.js` + `src/services/audit.service.js` (`logAudit`, filtra secretos).
+
+## Código modificado
+- `src/routes/admin.routes.js` — **piloto**: `/admin/*` pasa de `requireCapability(['ADMIN','SUPERVISOR'])`
+  a `verifyToken → requirePermission(DASHBOARD_VIEW|REPORTS_VIEW) → requireGlobalScope()`. **Comportamiento
+  equivalente** (ADMIN/SUPERVISOR/SUPERADMIN con lectura global pasan; el resto 403).
+- `src/controllers/checkerGrant.controller.js` — `/getCapabilities` añade **`permissions[]`** de forma
+  aditiva; `capabilities[]` **sin cambios** (Flutter no necesita cambios).
+
+## Endpoints migrados al nuevo modelo
+- ✅ `GET /admin/dashboard` → `DASHBOARD_VIEW` + scope GLOBAL.
+- ✅ `GET /admin/reporte`, `GET /admin/observaciones` → `REPORTS_VIEW` + scope GLOBAL.
+- Todo lo demás sigue en **autorización legacy** (`requireCapability`/`requireRole`/`requireOwnership`/abierto).
+
+## Compatibilidad verificada (tests)
+- `capabilities[]` intacto; `permissions[]` aditivo. `PUT /checks/:id` sigue usando `CheckerGrant` (sin cambios).
+- Grants CHECKER/SUPERVISOR actuales siguen funcionando vía `CapabilityGrant`.
+
+---
 
 # Riesgos / deuda técnica
 - Reusar `CheckerGrant` para ADMIN/SUPERADMIN mezcla "capability de checador" con "rol de seguridad";

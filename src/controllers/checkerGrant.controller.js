@@ -9,6 +9,7 @@ import {
     deleteSupervisorGrant
 } from '../repositories/checkerGrant.repo.js';
 import { searchAssignablePersonsByName } from '../repositories/user.repo.js';
+import { getPermissionsForUser } from '../services/capability.service.js';
 
 const SCOPES = new Set(['SALIDA', 'RETORNO', 'AMBOS']);
 const VIGENCIAS = new Set(['TEMPORAL', 'PERMANENTE']);
@@ -172,11 +173,15 @@ export const revokeSupervisorGrant = async (req, res) => {
     }
 };
 
-// GET /getCapabilities  -> capabilities del usuario autenticado
+// GET /getCapabilities  -> capabilities del usuario autenticado.
+// `capabilities` se mantiene igual (forma que consume Flutter, sin cambios). Se añade de
+// forma ADITIVA `permissions` (permisos resueltos del nuevo modelo) para que Flutter pueda
+// manejar UI por permiso sin conocer la estructura interna. No requiere cambios en Flutter.
 export const getCapabilities = async (req, res) => {
     try {
         const capabilities = await findCapabilitiesByLogin(req.user.id);
-        return res.json({ capabilities });
+        const permissions = [...(await getPermissionsForUser(req.user))];
+        return res.json({ capabilities, permissions });
     } catch (error) {
         console.error('Error al obtener capabilities:', error);
         return res.status(500).json({ message: 'Error al obtener capabilities', code: 'SERVER_ERROR' });
