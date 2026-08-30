@@ -7,7 +7,7 @@ import {
     findRegistrationByTokenHash,
     consumeTokenAndCreateUserTx
 } from '../repositories/registrationToken.repo.js';
-import { resolveTipoUser, resolveDormitorio } from '../services/registration.service.js';
+import { resolveTipoUser, resolveDormitorio, normalizeEmail } from '../services/registration.service.js';
 import * as ulv from '../services/ulvApiService.js';
 import { UlvApiError } from '../services/ulvApiService.js';
 import * as otpProvider from '../services/otpProviderService.js';
@@ -22,9 +22,19 @@ const sha256 = (v) => crypto.createHash('sha256').update(v).digest('hex');
 const httpDeInfra = (code) => (String(code).endsWith('TIMEOUT') ? 504 : 502);
 const esErrorDeInfra = (e) => e instanceof OtpProviderError || e instanceof UlvApiError;
 
-// Rate-limit simple en memoria por matrícula para verify-otp (delegado además al proveedor).
+// ---------------------------------------------------------------------------------------------
+// Rate-limit en memoria (ver docs/security/register-security-contract.md § Rate-limit).
+// NOTA IMPORTANTE: es PER-PROCESO. Se reinicia al reiniciar el proceso y NO se comparte entre
+// múltiples instancias (cada réplica cuenta por separado). Válido solo para despliegue de una
+// sola instancia. ANTES de escalar horizontalmente debe migrarse a un store compartido/persistente
+// (p. ej. Redis). No se introduce esa infraestructura aún porque no es necesaria hoy.
+// ---------------------------------------------------------------------------------------------
+
+const VENTANA_MS = 10 * 60 * 1000;
+
+// (a) verify-otp: intentos de verificación por matrícula (además del límite del proveedor).
 const intentos = new Map(); // matricula -> { count, resetAt }
-const MAX_INTENTOS = 5, VENTANA_MS = 10 * 60 * 1000;
+const MAX_INTENTOS = 5;
 const bump = (mat) => {
     const now = Date.now();
     const e = intentos.get(mat);
@@ -33,12 +43,43 @@ const bump = (mat) => {
 };
 const reset = (mat) => intentos.delete(mat);
 
+// (b) /register/otp: anti-spam de ENVÍO de correo. Cuenta por matrícula y por IP en la ventana;
+// agotar CUALQUIERA de las dos dimensiones -> 429. Se evalúa ANTES de consultar ULV/existencia,
+// así el 429 no revela si la matrícula existe (mismo comportamiento exista o no).
+const enviosOtp = new Map(); // key -> { count, resetAt }
+const MAX_ENVIOS = 5; // 3-5 envíos por matrícula/IP en la ventana
+const contarEnvio = (key) => {
+    const now = Date.now();
+    const e = enviosOtp.get(key);
+    if (!e || e.resetAt < now) { enviosOtp.set(key, { count: 1, resetAt: now + VENTANA_MS }); return 1; }
+    e.count += 1; return e.count;
+};
+const obtenerIp = (req) => {
+    const xff = req.headers?.['x-forwarded-for'];
+    if (xff) return String(xff).split(',')[0].trim();
+    return req.ip || req.socket?.remoteAddress || null;
+};
+const excedeEnvio = (matricula, ip) => {
+    // Consumir ambas dimensiones para que el límite aplique aunque una falte.
+    const porMat = contarEnvio(`mat:${matricula}`) > MAX_ENVIOS;
+    const porIp = ip ? contarEnvio(`ip:${ip}`) > MAX_ENVIOS : false;
+    return porMat || porIp;
+};
+
+// Solo para pruebas: limpia los contadores en memoria (evita interferencia entre casos).
+export const resetRegistrationRateLimits = () => { intentos.clear(); enviosOtp.clear(); };
+
 // POST /register/otp { matricula } -> 200 genérico. Solo envía OTP si la matrícula existe en
 // ULV, tiene correo institucional y NO está ya registrada (anti-enumeración: misma respuesta).
 export const requestRegistrationOtp = async (req, res) => {
     try {
         const matricula = String(req.body?.matricula ?? '').trim();
         if (!matricula) return res.status(400).json({ message: 'matricula es obligatoria', code: 'MISSING_FIELDS' });
+
+        // Anti-spam ANTES de tocar ULV/BD: no revela existencia (429 igual exista o no).
+        if (excedeEnvio(matricula, obtenerIp(req))) {
+            return res.status(429).json({ message: 'Demasiadas solicitudes, intenta mas tarde', code: 'TOO_MANY_ATTEMPTS' });
+        }
 
         const persona = await ulv.getPersonData(matricula); // UlvApiError si cae
         const yaExiste = await findUserByMatricula(matricula);
@@ -122,18 +163,27 @@ export const newUser = async (req, res) => {
             return res.status(409).json({ message: 'La cuenta ya esta registrada', code: 'USER_ALREADY_EXISTS' });
         }
 
-        // 4) Datos institucionales AUTORITATIVOS desde ULV (nunca del body).
-        let persona;
+        // 4) Datos institucionales AUTORITATIVOS desde ULV (nunca del body). TipoUser se resuelve
+        //    server-side (puede consultar endpoints de ULV -> UlvApiError se trata como infra).
+        let persona, tipoUser;
         try {
             persona = await ulv.getPersonData(matricula);
+            tipoUser = persona ? await resolveTipoUser(persona) : null;
         } catch (error) {
             if (esErrorDeInfra(error)) return res.status(httpDeInfra(error.code)).json({ message: 'Servicio no disponible', code: error.code });
             throw error;
         }
-        const tipoUser = resolveTipoUser(persona);
         if (!persona || !persona.correo || !tipoUser) {
             return res.status(409).json({ message: 'No se pudo validar la identidad institucional', code: 'STUDENT_NOT_FOUND' });
         }
+
+        // 4b) Binding fuerte matrícula+correo: el correo del registrationToken debe seguir
+        //     coincidiendo con el correo institucional que ULV devuelve ahora (normalizado). Esto
+        //     prueba posesión de la identidad completa, no solo de la matrícula. Error genérico.
+        if (normalizeEmail(rec.CorreoInstitucional) !== normalizeEmail(persona.correo)) {
+            return res.status(409).json({ message: 'No se pudo validar la identidad institucional', code: 'IDENTITY_MISMATCH' });
+        }
+
         const dormitorio = await resolveDormitorio(persona);
 
         // 5) Alta transaccional (consume token + inserta). NUNCA otorga capabilities.

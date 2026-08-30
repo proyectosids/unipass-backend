@@ -8,7 +8,8 @@ import 'dotenv/config';
 
 vi.mock('../src/services/ulvApiService.js', () => {
     class UlvApiError extends Error { constructor(c) { super(c); this.code = c; } }
-    return { UlvApiError, getPersonData: vi.fn() };
+    // getPreceptor por defecto: nadie es preceptor (el empleado cae en EMPLEADO).
+    return { UlvApiError, getPersonData: vi.fn(), getPreceptor: vi.fn().mockResolvedValue(null) };
 });
 vi.mock('../src/services/otpProviderService.js', () => {
     class OtpProviderError extends Error { constructor(c) { super(c); this.code = c; } }
@@ -17,6 +18,7 @@ vi.mock('../src/services/otpProviderService.js', () => {
 
 import * as ulv from '../src/services/ulvApiService.js';
 import * as otpProvider from '../src/services/otpProviderService.js';
+import { resetRegistrationRateLimits } from '../src/controllers/register.controller.js';
 import app from '../src/app.js';
 
 const hasDb = !!process.env.DB_SERVER;
@@ -25,7 +27,8 @@ const sha256 = (v) => crypto.createHash('sha256').update(v).digest('hex');
 
 d('Autoregistro seguro (integración)', () => {
     let pool;
-    const creados = new Set();   // matrículas creadas -> limpiar
+    const creados = new Set();     // matrículas con USUARIO creado -> borrar LoginUniPass + token
+    const tokensSeed = new Set();  // matrículas con TOKEN sembrado/emitido -> borrar solo token
     const ALUMNO = (mat) => ({ type: 'ALUMNO', matricula: mat, correo: `${mat}@ulv.edu.mx`, nombre: 'REAL', apellidos: 'ULV', sexo: 'M', fechaNacimiento: '2004-01-01', celular: '9610000000', residencia: 'INTERNO', nivelEducativo: 'UNIVERSITARIO' });
     const EMPLEADO = (mat) => ({ type: 'EMPLEADO', matricula: mat, correo: `${mat}@ulv.edu.mx`, nombre: 'EMP', apellidos: 'ULV', sexo: 'F', fechaNacimiento: '1990-01-01', celular: '9610000001', departamento: 'SEGURIDAD INSTITUCIONAL', idDepartamento: 302 });
 
@@ -36,8 +39,12 @@ d('Autoregistro seguro (integración)', () => {
         });
     });
     afterAll(async () => {
+        // Solo se borra LoginUniPass de cuentas creadas por las pruebas (nunca cuentas reales
+        // como 221068). Los tokens de prueba se borran para todas las matrículas involucradas.
         for (const m of creados) {
             await pool.request().input('m', sql.VarChar, m).query('DELETE FROM UNIPASS.LoginUniPass WHERE Matricula=@m');
+        }
+        for (const m of new Set([...creados, ...tokensSeed])) {
             await pool.request().input('m', sql.VarChar, m).query('DELETE FROM UNIPASS.RegistrationToken WHERE Matricula=@m');
         }
         await pool?.close();
@@ -51,10 +58,12 @@ d('Autoregistro seguro (integración)', () => {
         ulv.getPersonData.mockResolvedValue(persona);
         otpProvider.verifyOtp.mockResolvedValue(true);
         const r = await request(app).post('/register/verify-otp').send({ matricula: mat, otp: '1234' });
+        tokensSeed.add(mat);
         return r.body.registrationToken;
     };
     // Inserta un registrationToken directo (para casos borde) con hash conocido.
     const seedToken = async ({ matricula, correo = 'x@ulv.edu.mx', expiraEnMs = 10 * 60 * 1000, usado = false }) => {
+        tokensSeed.add(matricula);
         const token = crypto.randomBytes(16).toString('hex');
         await pool.request()
             .input('m', sql.VarChar(10), matricula).input('c', sql.VarChar(80), correo)
@@ -135,6 +144,48 @@ d('Autoregistro seguro (integración)', () => {
         const r = await request(app).post('/register').send({ Matricula: mat, 'Contraseña': 'AltaSegura123', registrationToken: t, Nombre: 'HACKER', Correo: 'otro@evil.com' });
         expect(r.status).toBe(201);
         expect(r.body.Nombre).toBe('REAL'); expect(r.body.Correo).toBe(`${mat}@ulv.edu.mx`);
+    });
+
+    // EMPLEADO normal (no coordinador/preceptor/vigilancia) -> EMPLEADO
+    it('EMPLEADO normal (ni preceptor ni vigilancia) -> EMPLEADO', async () => {
+        const mat = matUnica(); creados.add(mat);
+        ulv.getPreceptor.mockResolvedValue(null); // no es preceptor de su depto
+        const t = await getToken(mat, EMPLEADO(mat));
+        ulv.getPersonData.mockResolvedValue(EMPLEADO(mat));
+        const r = await request(app).post('/register').send({ Matricula: mat, 'Contraseña': 'AltaSegura123', registrationToken: t });
+        expect(r.status).toBe(201); expect(r.body.TipoUser).toBe('EMPLEADO');
+        expect(r.body.Dormitorio).toBeNull();
+    });
+    // ULV confirma que el empleado es el preceptor de su depto -> PRECEPTOR
+    it('EMPLEADO que es preceptor de su depto -> PRECEPTOR', async () => {
+        const mat = matUnica(); creados.add(mat);
+        const t = await getToken(mat, EMPLEADO(mat));
+        ulv.getPersonData.mockResolvedValue(EMPLEADO(mat));
+        ulv.getPreceptor.mockResolvedValue({ 'ID JEFE': mat }); // su matrícula = jefe del depto
+        const r = await request(app).post('/register').send({ Matricula: mat, 'Contraseña': 'AltaSegura123', registrationToken: t });
+        expect(r.status).toBe(201); expect(r.body.TipoUser).toBe('PRECEPTOR');
+    });
+    // Correo institucional cambia entre OTP y registro -> rechazado (binding matrícula+correo)
+    it('correo distinto entre OTP y registro -> 409 IDENTITY_MISMATCH', async () => {
+        const mat = matUnica();
+        const t = await getToken(mat, ALUMNO(mat)); // token ligado a `${mat}@ulv.edu.mx`
+        ulv.getPersonData.mockResolvedValue({ ...ALUMNO(mat), correo: `cambiado@ulv.edu.mx` });
+        const r = await request(app).post('/register').send({ Matricula: mat, 'Contraseña': 'AltaSegura123', registrationToken: t });
+        expect(r.status).toBe(409); expect(r.body.code).toBe('IDENTITY_MISMATCH');
+        // no debe haberse creado la cuenta
+        const row = (await pool.request().input('m', sql.VarChar, mat).query('SELECT 1 FROM UNIPASS.LoginUniPass WHERE Matricula=@m')).recordset[0];
+        expect(row).toBeUndefined();
+    });
+
+    // ---- register/otp: anti-spam ----
+    it('spam /register/otp -> 429 sin revelar existencia', async () => {
+        resetRegistrationRateLimits();
+        const mat = matUnica();
+        ulv.getPersonData.mockResolvedValue(null); // matrícula inexistente: aun así debe limitar
+        let last;
+        for (let i = 0; i < 6; i++) last = await request(app).post('/register/otp').send({ matricula: mat });
+        expect(last.status).toBe(429); expect(last.body.code).toBe('TOO_MANY_ATTEMPTS');
+        expect(String(last.body.message)).not.toMatch(/exist|registrad|encontr/i);
     });
 
     // ---- register: rechazos de token ----
