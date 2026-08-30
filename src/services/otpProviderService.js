@@ -71,6 +71,15 @@ export const sendRecoveryOtp = async (email) => {
     return true;
 };
 
+// Enviar OTP de VERIFICACIÓN DE EMAIL (alta de cuenta). POST /api/v1/otp_app (x-access-token).
+export const sendVerificationOtp = async (email) => {
+    const res = await withAuth((token) => postJson('/api/v1/otp_app', {
+        email, subject: 'Verificacion de Email', message: 'Verifica tu email con el codigo de abajo', duration: 1
+    }, { token }));
+    if (res.status !== 200) throw new OtpProviderError('OTP_PROVIDER_UNAVAILABLE');
+    return true;
+};
+
 // Verificación server-side del OTP. Contrato: POST /api/v1/email_verification/verifyOTP
 // (sin x-access-token). 200 => válido; no-200 => inválido (no lanza).
 // ⚠️ RIESGO (docs/otp-service-contract.md): este endpoint está documentado para el OTP de

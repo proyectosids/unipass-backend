@@ -1,13 +1,19 @@
 import { Router } from "express";
-import { verifyToken } from "../Middleware/verifityToken.js";
-import { requireCapability } from "../Middleware/requireCapability.js";
-import { newUser } from "../controllers/register.controller.js";
+import { requestRegistrationOtp, verifyRegistrationOtp, newUser } from "../controllers/register.controller.js";
 
 const router = Router();
 
-// P0 (hardening): el alta de usuario ANTES era anónima -> permitía crear cuentas
-// ADMINISTRATIVO y escalar a ADMIN. Ahora exige token + capability ADMIN. El TipoUser
-// permitido se valida server-side con una allowlist en el controlador (no se confía en el body).
-router.post("/register", verifyToken, requireCapability(['ADMIN']), newUser);
+// Autoregistro PUBLICO seguro (3 pasos). La identidad se prueba con OTP al correo institucional
+// (server-side) -> registrationToken -> alta con datos de ULV. El backend NO confía en TipoUser,
+// Dormitorio ni datos institucionales del cliente. Ver docs/security/register-security-contract.md.
+
+// 1) Solicitar OTP al correo institucional (respuesta genérica; anti-enumeración).
+router.post("/register/otp", requestRegistrationOtp);
+
+// 2) Verificar OTP server-side -> registrationToken (opaco, single-use, 10 min).
+router.post("/register/verify-otp", verifyRegistrationOtp);
+
+// 3) Alta final: requiere registrationToken; TipoUser/Dormitorio/datos se derivan de ULV.
+router.post("/register", newUser);
 
 export default router;

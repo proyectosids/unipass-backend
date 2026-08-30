@@ -38,7 +38,7 @@ IdDormitorio, Capability('CHECKER'|'SUPERVISOR')`. Unicidad `(IdLogin, Tipo, IdD
 ## A.3 Roles/capabilities existentes hoy
 | Nombre | Dónde vive | Efecto |
 |---|---|---|
-| `ADMIN` | derivado de `TipoUser='ADMINISTRATIVO'` | pasa `requireCapability(['ADMIN'])`: `/admin/*`, `/supervisorGrant*`, `DELETE /permission/:Id`, `POST /register` (temporal) |
+| `ADMIN` | derivado de `TipoUser='ADMINISTRATIVO'` | pasa `requireCapability(['ADMIN'])`: `/admin/*`, `/supervisorGrant*`, `DELETE /permission/:Id` |
 | `SUPERVISOR` | `CheckerGrant.Capability` | solo lectura `/admin/*` |
 | `CHECKER` | `CheckerGrant.Capability` (por Tipo/dorm/scope) | confirmar checks (`PUT /checks/:id`) |
 | roles `PRECEPTOR`/`VIGILANCIA` (TipoUser) | `requireRole` | gestionar grants CHECKER |
@@ -60,14 +60,22 @@ aditivo** (no romper estas claves).
 - **Distribución de TipoUser (BD):** 1 ADMINISTRATIVO (Teresa), 21 ALUMNO, 6 EMPLEADO, 4 PRECEPTOR,
   1 VIGILANCIA, 2 DEPARTAMENTO (retirado). → Hoy solo **1 cuenta** obtiene ADMIN por este puente.
 
-## A.6 Estado de `POST /register` (a rediseñar, punto 12)
-Commit reciente lo dejó `verifyToken + requireCapability(['ADMIN'])` + allowlist de TipoUser. **Eso
-NO corresponde**: `/register` es **autoregistro público**. Se conserva de ese cambio: respuesta sin
-hash, sin TokenCFM/tokens, sin log de contraseña, y las pruebas reutilizables. El gating cambia (ver B.8).
+## A.6 Estado de `POST /register` (REDISEÑADO — autoregistro público seguro)
+Ya **implementado** como flujo público de 3 pasos (ver `docs/security/register-security-contract.md`):
+- **Es público** (sin `verifyToken`, sin `requireCapability`). La versión ADMIN-only intermedia se descartó.
+- **No concede capabilities.** El alta crea solo **identidad** (fila en `LoginUniPass`); CHECKER/SUPERVISOR/
+  ADMIN/SUPERADMIN se otorgan siempre por su vía controlada, nunca por registro.
+- **`TipoUser` se determina server-side** desde ULV (`ALUMNO`→`ALUMNO`, `EMPLEADO`→`EMPLEADO`; los subtipos
+  elevados NO se autoasignan). El `TipoUser`/`Dormitorio`/datos institucionales del body se **ignoran**.
+- **Prueba de identidad:** OTP al correo institucional (verificado server-side) → `registrationToken`
+  opaco, ligado a la matrícula, de un solo uso y expiración corta → alta.
+- Se conserva del endurecimiento previo: respuesta sin hash, sin TokenCFM/tokens, sin log de contraseña,
+  pruebas reutilizables. Flutter solo aporta `Matricula`, `otp` y `Contraseña`.
 
 ## A.7 Impacto en Flutter (resumen)
 - Consume `capabilities[]` (no debe romperse).
-- `/register` es su flujo de autoregistro (gating ADMIN lo rompería → se rediseña).
+- `/register` sigue siendo su flujo de autoregistro, ahora en 3 pasos (`/register/otp` →
+  `/register/verify-otp` → `/register`). Ver contrato en `register-security-contract.md`.
 - Los grants CHECKER/SUPERVISOR y el panel admin siguen igual en esta fase.
 
 ---
@@ -162,26 +170,35 @@ Bajo `src/Middleware/`:
   grant SUPERADMIN para un `IdLogin` **que tú indiques** (no automático, requiere tu autorización).
 - Regla futura (a confirmar): **solo SUPERADMIN** puede otorgar/revocar SUPERADMIN (un ADMIN normal no).
 
-## B.8 Rediseño de `POST /register` (autoregistro público SEGURO)
-Contrato objetivo (a detallar con Frontend antes de implementar):
+## B.8 Rediseño de `POST /register` (autoregistro público SEGURO) — ✅ IMPLEMENTADO
+Flujo **público de 3 pasos** ya implementado. Contrato completo en
+`docs/security/register-security-contract.md`. Resumen:
 ```
-Flutter → POST /register { matricula, (correo verificado por OTP?), Contraseña, ... }
-Backend:
-  1. Verifica identidad contra ULV: getStudentData(matricula) / /api/datos/:matricula (debe existir).
-  2. Deriva TipoUser SERVER-SIDE del tipo institucional de ULV (Data.type: ALUMNO/EMPLEADO).
-     -> NUNCA del body. Un TipoUser arbitrario del cliente se IGNORA.
-  3. (Recomendado) exige verificación de identidad por OTP de alta de cuenta (flujo /otp_app/verifyOTP
-     ya existe en el proveedor) para evitar registrar una identidad ajena.
-  4. NUNCA otorga capabilities (ADMIN/SUPERADMIN/SUPERVISOR/CHECKER) en el registro.
-Se CONSERVA del hardening previo: sin hash en respuesta, sin TokenCFM/tokens, sin log de contraseña, pruebas.
+1) POST /register/otp        { matricula }        -> 200 genérico (anti-enumeración).
+      Envía OTP al correo institucional (ULV) solo si la matrícula existe, tiene correo y NO está registrada.
+2) POST /register/verify-otp { matricula, otp }   -> { registrationToken }
+      Verifica el OTP SERVER-SIDE contra el proveedor. Token opaco (sha256 en BD), ligado a la matrícula,
+      single-use, expiración 10 min. Rate-limit por matrícula (5/10min -> 429).
+3) POST /register            { Matricula, Contraseña, registrationToken } -> 201 (identidad creada)
+      Valida token (inválido/usado/expirado/mismatch), política de contraseña, unicidad; deriva
+      TipoUser+Dormitorio SERVER-SIDE desde ULV; consume token e inserta en una transacción.
 ```
+Reglas aplicadas:
+- **TipoUser SERVER-SIDE** desde ULV (`ALUMNO`→`ALUMNO`, `EMPLEADO`→`EMPLEADO`; subtipos elevados NO
+  autoasignados). `TipoUser`/`Dormitorio`/datos del body se **ignoran** por completo.
+- **NUNCA otorga capabilities** (ADMIN/SUPERADMIN/SUPERVISOR/CHECKER). El alta crea solo identidad.
+- Se conserva del hardening previo: sin hash en respuesta, sin TokenCFM/tokens, sin log de contraseña,
+  pruebas reutilizables (`tests/register.integration.test.js`, `tests/hardening.test.js`).
+
 Esto desacopla: `/register` crea **identidad** (TipoUser desde ULV); las **capabilities** se otorgan
 por otros flujos controlados. Impide autoasignarse privilegios (el TipoUser no viene del cliente y no
 hay capability en el alta).
 
-> ⚠️ Pregunta abierta para ti/Frontend antes de FASE C (punto 12): ¿qué manda hoy Flutter en
-> `new_account`?, ¿ya pasa por OTP de alta?, ¿la fuente autoritativa del TipoUser es `Data.type` de ULV
-> o hay reglas adicionales (p. ej. EMPLEADO vs PRECEPTOR/VIGILANCIA que ULV no distingue)?
+Decisiones de dominio resueltas durante la implementación:
+- ULV **no distingue de forma fiable** EMPLEADO de PRECEPTOR/VIGILANCIA/ADMINISTRATIVO → el registro
+  solo produce `ALUMNO`/`EMPLEADO`; los subtipos elevados se provisionan de forma controlada aparte.
+- Se añadió `sendVerificationOtp` (proveedor `/api/v1/otp_app`) para el OTP de alta; la verificación
+  reutiliza `/api/v1/email_verification/verifyOTP`.
 
 ## B.9 Auditoría (punto 10)
 **Tabla nueva `AuditLog`** (migración a diseñar):

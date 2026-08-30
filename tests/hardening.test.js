@@ -44,13 +44,20 @@ describe('Task 7.1 PUT /me/password: gating', () => {
     });
 });
 
-describe('P0 POST /register: gating (sin DB)', () => {
-    it('sin token -> 401', async () => {
-        const res = await request(app).post('/register').send({ Matricula: 'X1', TipoUser: 'ADMINISTRATIVO' });
-        expect(res.status).toBe(401);
+describe('Autoregistro seguro: validaciones sin DB', () => {
+    it('POST /register sin registrationToken -> 400 MISSING_FIELDS', async () => {
+        const res = await request(app).post('/register').send({ Matricula: 'X1', 'Contraseña': 'AbcdEfgh1' });
+        expect(res.status).toBe(400);
+        expect(res.body.code).toBe('MISSING_FIELDS');
     });
-    it('token inválido -> 401', async () => {
-        const res = await request(app).post('/register').set('Authorization', 'Bearer basura').send({ Matricula: 'X1', TipoUser: 'ALUMNO' });
-        expect(res.status).toBe(401);
+    it('POST /register/otp sin matricula -> 400 MISSING_FIELDS', async () => {
+        const res = await request(app).post('/register/otp').send({});
+        expect(res.status).toBe(400);
+        expect(res.body.code).toBe('MISSING_FIELDS');
+    });
+    it('POST /register/verify-otp sin campos -> 400 MISSING_FIELDS', async () => {
+        const res = await request(app).post('/register/verify-otp').send({ matricula: 'X1' });
+        expect(res.status).toBe(400);
+        expect(res.body.code).toBe('MISSING_FIELDS');
     });
 });

@@ -46,6 +46,41 @@ export const getInstitutionalEmail = async (matricula) => {
     return email ? String(email).trim() : null;
 };
 
+// Task registro: datos institucionales NORMALIZADOS de una persona (alumno o empleado)
+// para el autoregistro. type=ALUMNO usa Data.student; type=EMPLEADO usa data.employee (con
+// nombres de campo distintos). Devuelve null si no existe. Lanza UlvApiError si cae el transporte.
+export const getPersonData = async (matricula) => {
+    const raw = await getJson(`/api/datos/${encodeURIComponent(matricula)}`);
+    if (!raw) return null;
+    const D = raw.Data || raw.data || {};
+    const type = D.type || null;
+    if (type === 'ALUMNO') {
+        const s = (D.student || [])[0];
+        if (!s) return null;
+        return {
+            type: 'ALUMNO', matricula: String(s.MATRICULA ?? matricula),
+            correo: s.CORREO_INSTITUCIONAL || null,
+            nombre: s.NOMBRE || '', apellidos: s.APELLIDOS || '',
+            sexo: s.SEXO || null, fechaNacimiento: s.FECHA_NACIMIENTO || null,
+            celular: s.CELULAR || s.TEL_FIJO || null,
+            residencia: s.RESIDENCIA || null, nivelEducativo: s.NIVEL_EDUCATIVO || null
+        };
+    }
+    if (type === 'EMPLEADO') {
+        const e = (D.employee || [])[0];
+        if (!e) return null;
+        return {
+            type: 'EMPLEADO', matricula: String(e.MATRICULA ?? matricula),
+            correo: e.EMAIl_INSTITUCIONAL || e.EMAIL_INSTITUCIONAL || e.CORREO_INSTITUCIONAL || null,
+            nombre: e.NOMBRES || e.NOMBRE || '', apellidos: e.APELLIDOS || '',
+            sexo: e.SEXO || null, fechaNacimiento: e.FECHA_NACIMIENTO || null,
+            celular: e.CELULAR || null,
+            departamento: e.DEPARTAMENTO || null, idDepartamento: e.ID_DEPARATAMENTO ?? null
+        };
+    }
+    return null;
+};
+
 // GET /api/datos/:matricula -> { type, work[] } (work: [{ "ID DEPTO", "DEPARTAMENTO", "ID JEFE", ... }])
 export const getStudentData = async (matricula) => {
     const data = await getJson(`/api/datos/${encodeURIComponent(matricula)}`);
