@@ -97,6 +97,16 @@ export const getDepartmentHead = (idDepto) => getJson(`/api/datos/JefeDepto/${en
 // GET /api/datos/getjefe/:matricula -> { EmpMatricula } | null  (valida que sea jefe de depto)
 export const validateDepartmentHead = (matricula) => getJson(`/api/datos/getjefe/${encodeURIComponent(matricula)}`);
 
+// GET /api/datos/vigilancia/:idEmpleado (idEmpleado == matrícula del empleado) ->
+//   objeto del departamento de seguridad { IdDepartamento, DepDepartamento, EmpMatricula, ... }
+//   SOLO si esa persona es el JEFE/RESPONSABLE de un departamento de SEGURIDAD INSTITUCIONAL;
+//   200+null en cualquier otro caso (incluido quien solo PERTENECE al departamento).
+// Contrato real verificado en vivo (2026): EmpMatricula es STRING; el body es el objeto completo
+// tipo JefeDepto, no un { EmpMatricula } aislado (Flutter documentaba el subset). El llamador
+// compara EmpMatricula contra la matrícula del empleado evaluado. NO derivar VIGILANCIA por
+// DEPARTAMENTO='SEGURIDAD INSTITUCIONAL': pertenecer al depto no implica ser el responsable.
+export const getJefeVigilancia = (idEmpleado) => getJson(`/api/datos/vigilancia/${encodeURIComponent(idEmpleado)}`);
+
 // GET /api/datos/coordinador/:matricula -> { empMatricula, IdDepartamento } | null
 // OJO: este es el COORDINADOR DE FACULTAD/CARRERA del alumno (dato institucional de
 // API-ULV), destinado al flujo de FIN DE CURSO (Tipo 4). NO es el "coordinador de

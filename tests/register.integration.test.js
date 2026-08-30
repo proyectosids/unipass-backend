@@ -8,8 +8,12 @@ import 'dotenv/config';
 
 vi.mock('../src/services/ulvApiService.js', () => {
     class UlvApiError extends Error { constructor(c) { super(c); this.code = c; } }
-    // getPreceptor por defecto: nadie es preceptor (el empleado cae en EMPLEADO).
-    return { UlvApiError, getPersonData: vi.fn(), getPreceptor: vi.fn().mockResolvedValue(null) };
+    // Por defecto: nadie es preceptor ni jefe de vigilancia (el empleado cae en EMPLEADO).
+    return {
+        UlvApiError, getPersonData: vi.fn(),
+        getPreceptor: vi.fn().mockResolvedValue(null),
+        getJefeVigilancia: vi.fn().mockResolvedValue(null)
+    };
 });
 vi.mock('../src/services/otpProviderService.js', () => {
     class OtpProviderError extends Error { constructor(c) { super(c); this.code = c; } }
@@ -49,7 +53,14 @@ d('Autoregistro seguro (integración)', () => {
         }
         await pool?.close();
     });
-    beforeEach(() => vi.clearAllMocks());
+    beforeEach(() => {
+        vi.clearAllMocks();
+        // Defaults seguros cada test: nadie es preceptor ni jefe de vigilancia salvo override explícito.
+        ulv.getPreceptor.mockResolvedValue(null);
+        ulv.getJefeVigilancia.mockResolvedValue(null);
+        otpProvider.verifyOtp.mockResolvedValue(true);
+        otpProvider.sendVerificationOtp.mockResolvedValue(true);
+    });
 
     let seq = 0;
     const matUnica = () => 'RG' + String(++seq).padStart(6, '0'); // <=10 chars, único
@@ -165,6 +176,56 @@ d('Autoregistro seguro (integración)', () => {
         const r = await request(app).post('/register').send({ Matricula: mat, 'Contraseña': 'AltaSegura123', registrationToken: t });
         expect(r.status).toBe(201); expect(r.body.TipoUser).toBe('PRECEPTOR');
     });
+    // ULV confirma que el empleado es el JEFE de vigilancia -> VIGILANCIA
+    it('EMPLEADO que ULV confirma como jefe de vigilancia -> VIGILANCIA', async () => {
+        const mat = matUnica(); creados.add(mat);
+        const t = await getToken(mat, EMPLEADO(mat));
+        ulv.getPersonData.mockResolvedValue(EMPLEADO(mat));
+        ulv.getJefeVigilancia.mockResolvedValue({ IdDepartamento: 302, DepDepartamento: 'SEGURIDAD INSTITUCIONAL', EmpMatricula: String(mat) });
+        const r = await request(app).post('/register').send({ Matricula: mat, 'Contraseña': 'AltaSegura123', registrationToken: t });
+        expect(r.status).toBe(201); expect(r.body.TipoUser).toBe('VIGILANCIA');
+    });
+    // Pertenece a SEGURIDAD INSTITUCIONAL pero el endpoint NO lo confirma -> EMPLEADO
+    it('EMPLEADO de Seguridad Institucional pero endpoint no confirma -> EMPLEADO', async () => {
+        const mat = matUnica(); creados.add(mat);
+        const t = await getToken(mat, EMPLEADO(mat)); // EMPLEADO() ya trae departamento 'SEGURIDAD INSTITUCIONAL'
+        ulv.getPersonData.mockResolvedValue(EMPLEADO(mat));
+        ulv.getJefeVigilancia.mockResolvedValue(null); // endpoint no confirma (no es el jefe)
+        const r = await request(app).post('/register').send({ Matricula: mat, 'Contraseña': 'AltaSegura123', registrationToken: t });
+        expect(r.status).toBe(201); expect(r.body.TipoUser).toBe('EMPLEADO');
+    });
+    // Cliente manda TipoUser=VIGILANCIA pero el endpoint no confirma -> EMPLEADO
+    it('cliente TipoUser=VIGILANCIA sin confirmación de ULV -> EMPLEADO', async () => {
+        const mat = matUnica(); creados.add(mat);
+        const t = await getToken(mat, EMPLEADO(mat));
+        ulv.getPersonData.mockResolvedValue(EMPLEADO(mat));
+        ulv.getJefeVigilancia.mockResolvedValue({ EmpMatricula: '999' }); // otro empleado, no coincide
+        const r = await request(app).post('/register').send({ Matricula: mat, 'Contraseña': 'AltaSegura123', registrationToken: t, TipoUser: 'VIGILANCIA' });
+        expect(r.status).toBe(201); expect(r.body.TipoUser).toBe('EMPLEADO');
+    });
+    // Precedencia: ULV confirma vigilancia Y preceptor a la vez -> gana VIGILANCIA
+    it('vigilancia y preceptor simultáneos -> VIGILANCIA (precedencia)', async () => {
+        const mat = matUnica(); creados.add(mat);
+        const t = await getToken(mat, EMPLEADO(mat));
+        ulv.getPersonData.mockResolvedValue(EMPLEADO(mat));
+        ulv.getJefeVigilancia.mockResolvedValue({ EmpMatricula: String(mat) });
+        ulv.getPreceptor.mockResolvedValue({ 'ID JEFE': mat });
+        const r = await request(app).post('/register').send({ Matricula: mat, 'Contraseña': 'AltaSegura123', registrationToken: t });
+        expect(r.status).toBe(201); expect(r.body.TipoUser).toBe('VIGILANCIA');
+    });
+    // Fallo/timeout del endpoint de vigilancia -> fail-closed (infra), NUNCA eleva a VIGILANCIA
+    it('timeout del endpoint de vigilancia -> infra 5xx, sin elevar ni crear cuenta', async () => {
+        const mat = matUnica(); tokensSeed.add(mat);
+        const t = await getToken(mat, EMPLEADO(mat));
+        ulv.getPersonData.mockResolvedValue(EMPLEADO(mat));
+        ulv.getJefeVigilancia.mockRejectedValue(new ulv.UlvApiError('ULV_API_TIMEOUT'));
+        const r = await request(app).post('/register').send({ Matricula: mat, 'Contraseña': 'AltaSegura123', registrationToken: t });
+        expect([502, 504]).toContain(r.status);
+        expect(r.body.TipoUser).toBeUndefined();
+        const row = (await pool.request().input('m', sql.VarChar, mat).query('SELECT 1 FROM UNIPASS.LoginUniPass WHERE Matricula=@m')).recordset[0];
+        expect(row).toBeUndefined();
+    });
+
     // Correo institucional cambia entre OTP y registro -> rechazado (binding matrícula+correo)
     it('correo distinto entre OTP y registro -> 409 IDENTITY_MISMATCH', async () => {
         const mat = matUnica();

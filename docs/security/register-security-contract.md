@@ -63,10 +63,21 @@ endpoints institucionales específicos. La lógica vive en `registration.service
 **Precedencia / incompatibilidad:** si ULV llegara a marcar a la misma persona como vigilancia **y**
 preceptor, gana **VIGILANCIA** (primer criterio). Es una regla explícita, no un accidente de orden.
 
-- **VIGILANCIA (rama pendiente):** `/api/datos/vigilancia/:idEmpleado` **no está confirmado** en el
-  código todavía. Hasta tener el contrato real (ruta + campo que confirma la función), el hook
-  `esVigilancia()` devuelve `false` y el empleado de seguridad cae en **EMPLEADO**. El hook está
-  **aislado** para cablearlo sin tocar el resto del flujo cuando se confirme el contrato.
+- **VIGILANCIA:** se confirma con `GET /api/datos/vigilancia/:idEmpleado` (donde `:idEmpleado` = la
+  **matrícula** del empleado; en ULV `MATRICULA == IdEmpleado`). Wrapper: `getJefeVigilancia`. ULV
+  devuelve el objeto del departamento de seguridad **solo si la persona es el JEFE/RESPONSABLE**; en
+  cualquier otro caso `200 null`. Es VIGILANCIA si `String(EmpMatricula).trim() === String(matrícula).trim()`.
+  **Contrato real verificado en vivo (2026)** — diferencias con lo documentado en Flutter:
+    - `:idEmpleado` es la **matrícula** del empleado (no un id distinto); coincide con lo que ya usamos.
+    - La respuesta real es el **objeto completo del depto** (`IdDepartamento, DepDepartamento,
+      EmpMatricula, Funcion, ...`), no un `{ EmpMatricula }` aislado; `EmpMatricula` **sí** está y es **string**.
+    - Semántica: confirma "jefe/responsable de un depto de SEGURIDAD INSTITUCIONAL", `null` si solo
+      pertenece. Ej.: matrícula del responsable → VIGILANCIA; empleado del mismo depto no responsable → EMPLEADO.
+  **Fail-closed:** si el endpoint cae/timeout, `getJefeVigilancia` propaga `UlvApiError` → el registro
+  responde infra (502/504) y **no** crea cuenta; **nunca** eleva ni degrada privilegios en silencio.
+  > Nota operativa: la BD puede tener cuentas VIGILANCIA asignadas manualmente que ULV no marca como
+  > jefe (o viceversa). El registro solo auto-asigna VIGILANCIA al **responsable confirmado por ULV**;
+  > las asignaciones manuales previas no se tocan.
 - **ADMINISTRATIVO NO se auto-asigna en el registro.** Razones: (1) `/api/datos/coordinador/:matricula`
   es el **coordinador de FACULTAD/CARRERA de un ALUMNO** (flujo Tipo 4), **no** el coordinador de
   dormitorio; (2) el coordinador de dormitorio **no es un dato de ULV**: es una cuenta interna que
@@ -145,7 +156,7 @@ con contraseña; respuesta saneada; pruebas de seguridad reutilizables.
   1. `POST /register/otp` `{ "matricula": "..." }` → `200 { message }` (genérico, siempre) | `429 TOO_MANY_ATTEMPTS` (spam). Envía OTP al correo institucional.
   2. `POST /register/verify-otp` `{ "matricula": "...", "otp": "1234" }` → `200 { "registrationToken": "<opaco>" }` | `400 INVALID_OTP` | `429 TOO_MANY_ATTEMPTS`.
   3. `POST /register` `{ "Matricula": "...", "Contraseña": "...", "registrationToken": "<opaco>" }` → `201 { IdLogin, Matricula, Correo, Nombre, Apellidos, TipoUser, Sexo, FechaNacimiento, Celular, StatusActividad, Dormitorio }` (sin hash/tokens). Errores: `400 REGISTRATION_TOKEN_*`/`WEAK_PASSWORD`, `409 USER_ALREADY_EXISTS`/`STUDENT_NOT_FOUND`/`IDENTITY_MISMATCH`.
-  - `TipoUser` devuelto: `ALUMNO` | `EMPLEADO` | `PRECEPTOR` (según ULV). `VIGILANCIA`/`ADMINISTRATIVO` **no** se asignan por registro.
+  - `TipoUser` devuelto: `ALUMNO` | `EMPLEADO` | `PRECEPTOR` | `VIGILANCIA` (según ULV, precedencia VIGILANCIA→PRECEPTOR→EMPLEADO). `ADMINISTRATIVO` **no** se asigna por registro (manual/controlado).
 - Flutter **deja de**: verificar OTP en cliente, calcular `TipoUser`, enviar Dormitorio/datos institucionales como autoridad, y hardcodear credenciales OTP (el backend asume el envío/verificación).
 - Flutter **solo** captura: matrícula, código OTP y contraseña elegida. Navegación: pantalla matrícula →
   pantalla OTP → pantalla contraseña → alta.

@@ -16,12 +16,16 @@ const esPreceptor = async (persona) => {
     return jefe != null && String(jefe).trim() === String(persona.matricula).trim();
 };
 
-// ¿El empleado es VIGILANCIA? PENDIENTE del contrato real de ULV
-// (/api/datos/vigilancia/:idEmpleado). Mientras no esté confirmado, no auto-deriva VIGILANCIA
-// (el empleado de seguridad cae en EMPLEADO). Al confirmar el contrato se cablea aquí sin tocar
-// el resto del flujo. Ver register-security-contract.md (§ VIGILANCIA pendiente).
-const esVigilancia = async (_persona) => {
-    return false;
+// ¿El empleado es VIGILANCIA? Se confirma con /api/datos/vigilancia/:idEmpleado (idEmpleado == su
+// matrícula): ULV devuelve el depto de seguridad con EmpMatricula SOLO si la persona es el
+// JEFE/RESPONSABLE. Es vigilancia si EmpMatricula coincide con su matrícula. Pertenecer a
+// 'SEGURIDAD INSTITUCIONAL' NO basta. Un fallo de transporte propaga UlvApiError (fail-closed:
+// nunca eleva en silencio). Ver register-security-contract.md § VIGILANCIA.
+const esVigilancia = async (persona) => {
+    if (!persona?.matricula) return false;
+    const v = await ulv.getJefeVigilancia(persona.matricula); // UlvApiError si cae transporte
+    const emp = v && (v.EmpMatricula ?? v.empMatricula);
+    return emp != null && String(emp).trim() === String(persona.matricula).trim();
 };
 
 // TipoUser AUTORITATIVO server-side desde ULV. Flutter no decide este valor.

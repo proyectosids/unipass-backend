@@ -184,8 +184,11 @@ Flujo **público de 3 pasos** ya implementado. Contrato completo en
       TipoUser+Dormitorio SERVER-SIDE desde ULV; consume token e inserta en una transacción.
 ```
 Reglas aplicadas:
-- **TipoUser SERVER-SIDE** desde ULV (`ALUMNO`→`ALUMNO`, `EMPLEADO`→`EMPLEADO`; subtipos elevados NO
-  autoasignados). `TipoUser`/`Dormitorio`/datos del body se **ignoran** por completo.
+- **TipoUser SERVER-SIDE** desde ULV. `ALUMNO`→`ALUMNO`. Para `EMPLEADO` se resuelve la función con
+  endpoints específicos de ULV, precedencia **VIGILANCIA→PRECEPTOR→EMPLEADO** (VIGILANCIA vía
+  `/api/datos/vigilancia/:matrícula`, PRECEPTOR vía `/api/datos/prece/:idDepartamento`). **ADMINISTRATIVO
+  NO se auto-asigna** (no es dato de ULV y concede ADMIN → manual/controlado). `TipoUser`/`Dormitorio`/
+  datos del body se **ignoran** por completo.
 - **NUNCA otorga capabilities** (ADMIN/SUPERADMIN/SUPERVISOR/CHECKER). El alta crea solo identidad.
 - Se conserva del hardening previo: sin hash en respuesta, sin TokenCFM/tokens, sin log de contraseña,
   pruebas reutilizables (`tests/register.integration.test.js`, `tests/hardening.test.js`).
@@ -195,8 +198,11 @@ por otros flujos controlados. Impide autoasignarse privilegios (el TipoUser no v
 hay capability en el alta).
 
 Decisiones de dominio resueltas durante la implementación:
-- ULV **no distingue de forma fiable** EMPLEADO de PRECEPTOR/VIGILANCIA/ADMINISTRATIVO → el registro
-  solo produce `ALUMNO`/`EMPLEADO`; los subtipos elevados se provisionan de forma controlada aparte.
+- La función del empleado se resuelve por **endpoints institucionales específicos** de ULV, no por
+  texto libre (`DEPARTAMENTO`). VIGILANCIA y PRECEPTOR **sí** se auto-derivan cuando ULV confirma que la
+  persona es el responsable (jefe de vigilancia / preceptor del depto). **ADMINISTRATIVO NO**: el
+  endpoint `/coordinador` es el coordinador de FACULTAD de un ALUMNO (Tipo 4), el coordinador de
+  dormitorio no es dato de ULV y concede ADMIN → se provisiona de forma controlada aparte.
 - Se añadió `sendVerificationOtp` (proveedor `/api/v1/otp_app`) para el OTP de alta; la verificación
   reutiliza `/api/v1/email_verification/verifyOTP`.
 
