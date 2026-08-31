@@ -1,8 +1,9 @@
 # Contrato definitivo Backend→Flutter — Task 7.4B (cadena de autorización de permisos)
 
-> **Estado:** `7.4B Backend = IMPLEMENTADO` · `7.4B global = PENDIENTE MIGRACIÓN FRONTEND`.
-> Este documento es la fuente de verdad contra la que Frontend debe migrar. Cubre **solo** el modelo ya
-> implementado. Lo que quede "fuera del contrato" (§10) NO forma parte de esta entrega.
+> **Estado: `Task 7.4B — CLOSED (security model)`.** Frontend migrado (commit `20921f9`). Backend
+> 158/158, Flutter 124/124. E2E real pendiente como **deployment gate** (no como código pendiente).
+> Este documento es la fuente de verdad del contrato. Lo que quede "fuera del contrato" (§10) NO forma
+> parte de esta entrega.
 
 ## 0. Commits Backend que componen el contrato
 
@@ -180,12 +181,20 @@ Enviar `{ "TipoUser": "ALUMNO" }` en el body **no** evade el gate (el `TipoUser`
 
 ---
 
-## 8. Estado
+## 8. Estado — `Task 7.4B — CLOSED (security model)`
 
-- **`7.4B Backend = IMPLEMENTADO`** (Commits `2a8db09`, `0efbd3e`, `c7a0e4f`; suite verde).
-- **`7.4B global = PENDIENTE MIGRACIÓN FRONTEND`.** No se declara cerrada hasta que Flutter migre contra
-  este contrato (enviar Bearer, dejar de enviar autorizador/estado, dejar de llamar rutas retiradas,
-  adaptar creación 2/3, ocultar Tipo 4).
+- Backend resolución segura (`2a8db09`): **CLOSED**.
+- Backend creación de cadena server-side 1/2/3 (`0efbd3e`): **CLOSED**.
+- Gate `POST /permission` solo ALUMNO (`c7a0e4f`): **CLOSED**.
+- `POST /authorize`: **RETIRED**. `PUT /permissionValorado/:Id`: **RETIRED**.
+- Flutter migrado: commit **`20921f9`**. Backend tests **158/158**; Flutter tests **124/124**.
+- **E2E real: pendiente como deployment gate** (no como código pendiente).
+- Tipo 4: bloqueado/documentado, fuera del cierre de tipos soportados 1/2/3.
+- ADMIN override / `PERMISSIONS_APPROVE`/`REJECT`: fuera de alcance (Fase 3).
+
+**Follow-ups (fuera de 7.4B):** `FOLLOW_UP_FUNCTIONAL_AUTHORIZATION_PROGRESS_FCM` (notificar al siguiente
+autorizador también por FCM, no solo socket; afecta entrega offline/UX, no la seguridad) y cleanup menor
+de `findNextPendingEmpleado` (usa `IdAuthorize ASC` en vez de `Orden`).
 
 ---
 

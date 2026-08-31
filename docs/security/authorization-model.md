@@ -358,9 +358,33 @@ cadena `Authorize` de forma **atómica y server-side**. El cliente **no** decide
 - **`GET /autorizadorSalida`:** se **conserva** (solo lectura), pero su función de seguridad ya es
   redundante (el backend resuelve el autorizador internamente). Frontend debería dejar de usarlo para crear permisos.
 
-> **Pendiente:** migración de Flutter (Bearer en `/autorizarPermission`, dejar de mandar `IdEmpleado`,
-> no llamar `/permissionValorado` ni `/authorize`, adaptar creación 2/3). Tipo 4 sin definir. ADMIN
-> override / `PERMISSIONS_APPROVE`/`REJECT` administrativos → Fase 3. **7.4B no se declara cerrada** hasta migrar Frontend.
+## Estado final — Task 7.4B = CLOSED (security model)
+
+**La cadena de autorización queda cerrada técnicamente en seguridad.** Frontend migró (commit `20921f9`).
+
+| Componente | Estado |
+|---|---|
+| Backend resolución segura (`PUT /autorizarPermission/:Id`, Commit `2a8db09`) | **CLOSED** |
+| Backend creación de cadena server-side (tipos 1/2/3, Commit `0efbd3e`) | **CLOSED** |
+| Gate `POST /permission` solo `ALUMNO` (Commit `c7a0e4f`) | **CLOSED** |
+| `POST /authorize` | **RETIRED** (404) |
+| `PUT /permissionValorado/:Id` | **RETIRED** (404) |
+| Flutter migrado | commit `20921f9` |
+| Backend tests | **158/158** |
+| Flutter tests | **124/124** |
+| E2E real | **pendiente como deployment gate**, no como código pendiente |
+| Tipo 4 (Fin de curso) | **bloqueado/documentado** (`501`), fuera del cierre de tipos soportados 1/2/3 |
+| ADMIN override / `PERMISSIONS_APPROVE`/`REJECT` | **fuera de alcance** (Fase 3) |
+
+### Follow-ups documentados (NO forman parte de 7.4B)
+- **`FOLLOW_UP_FUNCTIONAL_AUTHORIZATION_PROGRESS_FCM`** — al aprobarse un eslabón, el backend notifica al
+  siguiente autorizador **solo por socket** (no FCM). El backend **ya determina** correctamente al
+  siguiente autorizador server-side (`findNextPendingEmpleado`) y emite el socket; el faltante afecta
+  **entrega offline/UX, no la integridad ni la autorización** de la cadena. → follow-up funcional.
+- **Deuda menor:** `findNextPendingEmpleado` ordena por `IdAuthorize ASC` en vez de `Orden`. No afecta la
+  seguridad actual (las cadenas nuevas persisten `Orden` e `IdAuthorize` en la misma secuencia y
+  `resolveAuthorizeLinkTx` hace el enforcement correcto). Dejar como **cleanup posterior**.
+- **Aparte (no 7.4B):** endurecer `POST /checks` (anónimo, sin ownership, sin idempotencia) → tarea nueva independiente.
 
 # Fuera de alcance de esta tarea (no mezclar)
 Revisión documental (7.3), BOLA de lecturas — solo se referencian en la matriz endpoint→permiso
