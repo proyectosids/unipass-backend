@@ -27,7 +27,7 @@ const E = [
   ['post', '/password/forgot', 'Contraseña', 'Recuperación por matrícula (respuesta genérica)', { body: { matricula: '221068' } }],
   ['post', '/password/verify-otp', 'Contraseña', 'Validar OTP -> resetToken', { body: { matricula: '221068', otp: '1234' } }],
   ['post', '/password/reset', 'Contraseña', 'Aplicar nueva contraseña', { body: { resetToken: '<opaco>', nueva: 'NuevaPass123' } }],
-  ['put', '/password/{Correo}', 'Contraseña', 'LEGADO: cambio por correo', { body: { NewPassword: 'NuevaPass123' } }],
+  // RETIRADO (P0): PUT /password/{Correo} eliminado. El correo del cliente no autoriza cambios.
   // --- Permisos ---
   ['post', '/permission', 'Permisos', 'Crear permiso (Tipo 1 crea cadena server-side)', { auth: 'bearer', body: { FechaSolicitada: '2026-08-24T10:00:00', FechaSalida: '2026-08-25T09:00:00', FechaRegreso: '2026-08-25T18:00:00', StatusPermission: 'Pendiente', Motivo: 'Trámite', IdTipoSalida: 1, MedioSalida: 'Autobús' } }],
   ['get', '/permission/{Id}', 'Permisos', 'Historial paginado del alumno', { query: { page: '1', limit: '10' } }],

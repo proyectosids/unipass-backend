@@ -189,4 +189,4 @@ enforce de orden 1→4 (Salida Dorm → Salida Caseta → Regreso Caseta → Reg
 - `GET /user/:Id`, `/userMatricula` y el `user` de `/login` aún exponen el registro completo (hash incluido).
 - `POST /permission` aplica un ajuste horario `-6h` hardcodeado (deuda conocida).
 - CORS abierto y body limit 50 MB global.
-- `PUT /password/:Correo` legado sigue vivo hasta que Flutter migre recuperación.
+- `PUT /password/:Correo` **RETIRADO (P0)**: eliminado (ruta + controlador + repo `updateUserPassword` por Correo). El correo del cliente no autoriza cambios; cambio autenticado = `PUT /me/password`, recuperación = `/password/forgot`→`/password/verify-otp`→`/password/reset`.

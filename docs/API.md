@@ -152,7 +152,7 @@ Body: `{ "refreshToken": "..." }` → **204** (idempotente). 400 `MISSING_REFRES
 | `GET /user/:Id` | — | Usuario por `IdLogin`. ⚠️ Devuelve el registro completo (incluye hash). 404 si no existe. |
 | `GET /userMatricula/:Matricula` | — | Usuario por matrícula. ⚠️ Registro completo. 404 si no existe. |
 | `PUT /me/password` 🔒 | ✅ | **Task 7.1**: cambio del usuario autenticado. Body `{ actual, nueva }`; identidad del token. 200 / 400 `MISSING_FIELDS`\|`WEAK_PASSWORD` / 401 / 403 `PASSWORD_MISMATCH`. |
-| `PUT /password/:Correo` | — | **LEGADO** (deprecándose, Task 7.1). Body `{ NewPassword }`. Actualiza por correo sin OTP server-side. Vivo solo hasta que el flujo de recuperación (7.1.B) esté en producción. |
+| ~~`PUT /password/:Correo`~~ | — | **RETIRADO (P0).** Eliminado (ruta + controlador + repo). El correo del cliente no autoriza cambios de contraseña → responde **404**. Usar `PUT /me/password` o el flujo de recuperación (`/password/forgot` → `/password/verify-otp` → `/password/reset`). |
 | `GET /buscarUser/:Nombre` | — | Búsqueda **exacta** por `Nombre` o `Apellidos`. Añade `ExisteEnPosition`. 404 → body `null`. |
 | `GET /userChecks/:EmailAsignador` | — | **Legado**: checkers `DEPARTAMENTO` por correo del asignador. Vivo a propósito durante la transición (ver §6). |
 | `PUT /cambiarCargo/:Matricula` | — | Body `{ IdCargoDelegado }`. Asigna cargo delegado. |

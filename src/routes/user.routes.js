@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { verifyToken } from '../Middleware/verifityToken.js';
-import { getUser, loginUser, putPassword, putMePassword, BuscarUserMatricula, getBuscarCheckers, buscarPersona, updateCargo, endCargo, registerTokenFCM, SearchTokenFCM, documentComplet, verifySessionToken, refreshTokenController, logoutUser } from "../controllers/user.controllers.js";
+import { getUser, loginUser, putMePassword, BuscarUserMatricula, getBuscarCheckers, buscarPersona, updateCargo, endCargo, registerTokenFCM, SearchTokenFCM, documentComplet, verifySessionToken, refreshTokenController, logoutUser } from "../controllers/user.controllers.js";
 
 const router = Router();
 
@@ -24,8 +24,10 @@ router.get("/verifyToken", verifyToken, verifySessionToken);
 // Task 7.1: cambio de contraseña del usuario autenticado (identidad del token).
 router.put("/me/password", verifyToken, putMePassword);
 
-// LEGADO: cambio por correo (sin OTP server-side). Se retira cuando 7.1.B esté vivo.
-router.put("/password/:Correo", putPassword);
+// RETIRADO (P0): PUT /password/:Correo se ELIMINÓ. El correo del cliente nunca autoriza un cambio
+// de contraseña. Cambio autenticado -> PUT /me/password (identidad = req.user). Recuperación ->
+// POST /password/forgot -> /password/verify-otp -> /password/reset (resetToken). Ver
+// docs/security/authorization-model.md. Sin ruta = 404 estándar de Express.
 
 // LEGADO (modelo DEPARTAMENTO retirado): vivo solo durante la transicion a CheckerGrant
 router.get("/userChecks/:EmailAsignador", getBuscarCheckers);

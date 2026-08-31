@@ -281,6 +281,24 @@ SUPERADMIN real). No se reemplaza la identidad. **No implementar** salvo que se 
 - `/register` depende de ULV: si ULV cae, el autoregistro falla (igual que Pueblo). Aceptable.
 - Scope DORMITORIO para reviewers depende de la regla "dorm 5 = global" ya usada en dashboards.
 
+# Cambio de contraseña — mecanismos soportados (P0 cerrado)
+
+- **`PUT /password/:Correo` → RETIRED / REMOVED.** Se eliminó la ruta, el controlador (`putPassword`) y
+  su función de repositorio (`updateUserPassword` por Correo). Ya **no existe** ningún camino
+  `correo arbitrario → nueva contraseña`. Llamarlo responde **404** (ruta inexistente); **no** se
+  sustituyó por `verifyToken` (el diseño correcto ya existe abajo).
+- **El `Correo` (o `IdLogin`) enviado por el cliente NUNCA constituye autorización** para cambiar una
+  contraseña. La identidad del cambio autenticado sale de `req.user` (token); la de la recuperación,
+  del `resetToken` ligado server-side a un `IdLogin`.
+
+Mecanismos soportados:
+1. **Usuario autenticado — `PUT /me/password`** (`verifyToken`). Identidad = `req.user.id`; exige la
+   contraseña actual (`VerifyHashData`) + política; escribe por `IdLogin` (`updateUserPasswordById`).
+2. **Recuperación** (sin sesión): `POST /password/forgot` (matrícula → OTP, respuesta genérica) →
+   `POST /password/verify-otp` (OTP server-side → `resetToken` opaco ligado al `IdLogin`) →
+   `POST /password/reset` (`resetToken` válido/no usado/no expirado → cambia por `IdLogin`, atómico,
+   revoca refresh tokens). El `resetToken` no admite seleccionar otra identidad.
+
 # Fuera de alcance de esta tarea (no mezclar)
-password legacy `/password/:Correo`, Task 7.4B (cadena de autorización), revisión documental (7.3),
-BOLA de lecturas — solo se referencian en la matriz endpoint→permiso ([[permissions-matrix]]).
+Task 7.4B (cadena de autorización), revisión documental (7.3), BOLA de lecturas — solo se referencian
+en la matriz endpoint→permiso ([[permissions-matrix]]). (`/password/:Correo` legacy: **ya retirado**, ver arriba.)

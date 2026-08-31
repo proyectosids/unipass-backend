@@ -99,7 +99,7 @@ En `.env`, leídas por `String.fromEnvironment` en `lib/config/config_url.dart`:
 
 - **No hace falta mailer nuevo:** el proveedor OTP ya envía y verifica.
 - El backend puede **validar el OTP server-side** llamando `POST /api/v1/forgot_password_app/` (enviar) y verificando/reseteando con `/forgot_password_app/reset` (o `verifyOTP`), en vez de confiar en el cliente.
-- Endpoint objetivo (propuesto por backend): `POST /password/forgot`, `POST /password/verify-otp`, `POST /password/reset` → orquestando este proveedor server-side; luego **deprecar `PUT /password/:Correo`**.
+- Endpoint objetivo (propuesto por backend): `POST /password/forgot`, `POST /password/verify-otp`, `POST /password/reset` → orquestando este proveedor server-side. ✅ **Implementados.** El viejo `PUT /password/:Correo` que llamaba Flutter (`authService.updatePassword`, §8) fue **RETIRADO/REMOVED (P0)**: ya no existe en el backend (responde 404). Ver `docs/security/authorization-model.md`.
 - **A confirmar por la directiva:** quién administra `api-otp.apps.isdapps.uk` y si el backend puede llamar sus endpoints (`/user/login`, `/forgot_password_app/*`, `/email_verification/verifyOTP`) desde el servidor.
 - **Follow-up de 7.1.B:** una vez el backend absorba la integración, retirar de Flutter las llamadas directas al proveedor y **rotar `OTP_PASSWORD`**.
 

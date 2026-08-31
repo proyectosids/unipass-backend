@@ -153,16 +153,11 @@ export const updateUserPasswordById = (idLogin, hashedPassword) =>
         return result.rowsAffected[0] > 0;
     });
 
-export const updateUserPassword = (correo, hashedPassword) =>
-    withConnection(async (pool) => {
-        const result = await pool
-            .request()
-            .input('Correo', sql.VarChar, correo)
-            .input('Password', sql.VarChar, hashedPassword)
-            .input('TipoUser', sql.VarChar, 'DEPARTAMENTO')
-            .query('UPDATE UNIPASS.LoginUniPass SET Contraseña = @Password WHERE Correo = @Correo AND TipoUser != @TipoUser');
-        return result.rowsAffected[0] > 0;
-    });
+// RETIRADO (P0): updateUserPassword(correo) — actualizaba la contraseña por correo arbitrario, sin
+// identidad autenticada ni resetToken. Eliminada junto con PUT /password/:Correo. La única escritura
+// por identidad es updateUserPasswordById (arriba, por IdLogin del token); la recuperación usa
+// consumeResetAndUpdatePasswordTx (por IdLogin ligado a un resetToken válido). No reintroducir una
+// función genérica correo -> contraseña accesible fuera de esos flujos.
 
 export const updateDocumentacion = (matricula, statusDoc) =>
     withConnection(async (pool) => {

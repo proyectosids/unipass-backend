@@ -15,7 +15,6 @@ import {
     findCheckersByEmail,
     findPersonaByNombreOApellidos,
     findTokenFCMByMatricula,
-    updateUserPassword,
     updateUserPasswordById,
     updateDocumentacion,
     updateTokenFCM,
@@ -265,28 +264,11 @@ export const putMePassword = async (req, res) => {
     }
 };
 
-// LEGADO (Task 7.1): cambio por correo, sin prueba de identidad/OTP server-side. Se
-// mantiene SOLO mientras el flujo de recuperación (7.1.B, servicio OTP) no esté vivo;
-// deprecar en cuanto exista el reset con reset token verificado en backend.
-export const putPassword = async (req, res) => {
-    try {
-        console.warn(`[DEPRECATION][Task7.1] PUT /password/:Correo invocado (correo=${req.params.Correo}) — reemplazar por /me/password o el flujo de recuperación server-side`);
-        const { Correo } = req.params;
-        const { NewPassword } = req.body;
-        const hashedPassword = await hashData(NewPassword);
-
-        const updated = await updateUserPassword(Correo, hashedPassword);
-
-        if (!updated) {
-            return res.status(404).json({ message: 'Contraseña no actualizada' });
-        }
-
-        res.json({ message: 'Contraseña actualizado correctamente' });
-    } catch (error) {
-        console.error('Error al actualizar la contraseña:', error);
-        res.status(500).json({ error: 'Error al actualizar la contraseña' });
-    }
-};
+// RETIRADO (P0): el antiguo PUT /password/:Correo (cambio por correo arbitrario, sin identidad
+// autenticada ni OTP) fue ELIMINADO junto con su ruta y su función de repositorio
+// (updateUserPassword por Correo). El correo del cliente NUNCA autoriza un cambio de contraseña.
+// Rutas soportadas: PUT /me/password (identidad = token) y el flujo de recuperación con resetToken
+// (/password/forgot -> /password/verify-otp -> /password/reset).
 
 export const BuscarUserMatricula = async (req, res) => {
     try {
