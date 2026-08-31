@@ -3,7 +3,9 @@ import { verifyToken } from '../Middleware/verifityToken.js';
 import { createChecksPermission, getChecksDormitorio, getChecksDormitorioFinal, getChecksVigilancia, getChecksVigilanciaRegreso, putCheckPoint } from "../controllers/checks.controllers.js";
 const router = Router();
 
-// Alta de un checkpoint (el cliente crea los 4 al aprobarse el permiso)
+// DEPRECATED / TRANSITIONAL (Checks Hardening C1): el backend crea los 4 CheckPoints server-side al
+// aprobarse el permiso. Esta ruta queda solo como PUENTE idempotente mientras Flutter migra; se RETIRA
+// en C2 (-> 404). No ampliar su uso. El sistema no depende de ella.
 router.post("/checks", createChecksPermission);
 
 // Listados de pendientes por paso (1..4); :Id = IdDormitorio

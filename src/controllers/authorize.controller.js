@@ -19,7 +19,9 @@ const HTTP_AUTORIZAR = {
     NOT_AUTHORIZER: 403,
     PERMISSION_NOT_PENDING: 409,
     INVALID_TRANSITION: 409,
-    ORDER_NOT_READY: 409
+    ORDER_NOT_READY: 409,
+    // Checks C1: catálogo Point inconsistente al aprobar -> la aprobación falla (config server-side).
+    CHECKPOINT_CONFIGURATION_INCOMPLETE: 500
 };
 
 // Salidas cuyo autorizador se resuelve por el switch: 2=ESPECIAL, 3=A CASA.

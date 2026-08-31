@@ -26,18 +26,41 @@ const CHECK_FIELDS = `CheckPoints.IdCheck,
         LoginUniPass.Apellidos,
         ${PASO_CASE}`;
 
+// DEPRECATED / TRANSITIONAL (Checks Hardening C1): la creación autoritativa de los 4 CheckPoints es
+// server-side al aprobarse el permiso (ensureCheckPointsTx en authorize.repo). Este helper solo respalda
+// el endpoint legacy POST /checks como PUENTE de compatibilidad mientras Flutter migra, y es IDEMPOTENTE
+// por la clave natural (IdPermission, IdPoint, Accion): si el check ya existe devuelve el existente y no
+// duplica (evita 500 por duplicate key contra UNIQUE mig 014). No amplía el contrato. Se retira en C2.
+// Devuelve { id, created:boolean }.
 export const createCheckPoint = ({ statusCheck = 'Pendiente', accion, idPoint, idPermission }) =>
     withConnection(async (pool) => {
-        const result = await pool
-            .request()
-            .input('StatusCheck', sql.VarChar, statusCheck)
-            .input('Accion', sql.VarChar, accion)
-            .input('IdPoint', sql.Int, idPoint)
+        const buscar = () => pool.request()
             .input('IdPermission', sql.Int, idPermission)
-            .query(`INSERT INTO UNIPASS.CheckPoints (Estatus, Accion, IdPoint, IdPermission)
-                    VALUES (@StatusCheck, @Accion, @IdPoint, @IdPermission);
-                    SELECT SCOPE_IDENTITY() AS IdCheck;`);
-        return result.recordset[0].IdCheck;
+            .input('IdPoint', sql.Int, idPoint)
+            .input('Accion', sql.VarChar, accion)
+            .query('SELECT TOP 1 IdCheck FROM UNIPASS.CheckPoints WHERE IdPermission=@IdPermission AND IdPoint=@IdPoint AND Accion=@Accion ORDER BY IdCheck');
+
+        const existing = await buscar();
+        if (existing.recordset.length > 0) return { id: existing.recordset[0].IdCheck, created: false };
+
+        try {
+            const result = await pool.request()
+                .input('StatusCheck', sql.VarChar, statusCheck)
+                .input('Accion', sql.VarChar, accion)
+                .input('IdPoint', sql.Int, idPoint)
+                .input('IdPermission', sql.Int, idPermission)
+                .query(`INSERT INTO UNIPASS.CheckPoints (Estatus, Accion, IdPoint, IdPermission)
+                        VALUES (@StatusCheck, @Accion, @IdPoint, @IdPermission);
+                        SELECT SCOPE_IDENTITY() AS IdCheck;`);
+            return { id: result.recordset[0].IdCheck, created: true };
+        } catch (err) {
+            // Carrera: la UNIQUE (mig 014) rechazó un INSERT concurrente -> devolver el existente.
+            if (err.number === 2601 || err.number === 2627) {
+                const again = await buscar();
+                if (again.recordset.length > 0) return { id: again.recordset[0].IdCheck, created: false };
+            }
+            throw err;
+        }
     });
 
 export const findPendingChecksDormitorioSalida = (dormitorio) =>

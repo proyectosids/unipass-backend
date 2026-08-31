@@ -65,6 +65,7 @@ d('Task 7.4B Commit B - creación de cadena server-side (integración)', () => {
     afterAll(async () => {
         for (const id of permisos) {
             await pool.request().input('id', sql.NVarChar(40), String(id)).query("DELETE FROM UNIPASS.AuditLog WHERE Recurso='Permission' AND RecursoId=@id");
+            await pool.request().input('id', sql.Int, id).query('DELETE FROM UNIPASS.CheckPoints WHERE IdPermission=@id'); // C1: aprobar crea checks
             await pool.request().input('id', sql.Int, id).query('DELETE FROM UNIPASS.Authorize WHERE IdPermission=@id');
             await pool.request().input('id', sql.Int, id).query('DELETE FROM UNIPASS.IdempotencyRequest WHERE IdPermission=@id');
             await pool.request().input('id', sql.Int, id).query('DELETE FROM UNIPASS.Permission WHERE IdPermission=@id');

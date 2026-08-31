@@ -12,6 +12,41 @@ import { withConnection } from '../database/connection.js';
 // IdEmpleado del cliente, sin auth ni máquina de estados) fueron ELIMINADAS. La resolución segura y
 // atómica vive en resolveAuthorizeLinkTx (abajo), con actor del token y recálculo global en la misma tx.
 
+// Checks Hardening C1 (Opción B) - Crea IDEMPOTENTEMENTE los 4 CheckPoints de un permiso DENTRO de la
+// transacción de aprobación. Resuelve los Points por CATÁLOGO (Point.IdExit = IdTipoSalida): exige un
+// 'Dormitorio' y un 'Caseta' (no se hardcodean IdPoint). Combos: SALIDA/Dorm, SALIDA/Caseta,
+// RETORNO/Caseta, RETORNO/Dorm — todos 'Pendiente'. Idempotente (INSERT ... WHERE NOT EXISTS),
+// respaldado por UNIQUE(IdPermission,IdPoint,Accion) como última defensa de concurrencia.
+// Devuelve { ok:true } o { error:'CHECKPOINT_CONFIGURATION_INCOMPLETE' } si el catálogo Point no tiene
+// exactamente los 2 puntos requeridos (el llamador hace ROLLBACK: no se crean checks parciales).
+const ensureCheckPointsTx = async (tx, idPermission, idTipoSalida) => {
+    const pts = (await new sql.Request(tx)
+        .input('IdExit', sql.Int, idTipoSalida)
+        .query('SELECT IdPoint, NombrePunto FROM UNIPASS.Point WHERE IdExit = @IdExit')).recordset;
+    const dorm = pts.find((p) => p.NombrePunto === 'Dormitorio');
+    const caseta = pts.find((p) => p.NombrePunto === 'Caseta');
+    if (!dorm || !caseta) return { error: 'CHECKPOINT_CONFIGURATION_INCOMPLETE' };
+
+    const combos = [
+        { idPoint: dorm.IdPoint, accion: 'SALIDA' },   // paso 1
+        { idPoint: caseta.IdPoint, accion: 'SALIDA' }, // paso 2
+        { idPoint: caseta.IdPoint, accion: 'RETORNO' },// paso 3
+        { idPoint: dorm.IdPoint, accion: 'RETORNO' }   // paso 4
+    ];
+    for (const c of combos) {
+        await new sql.Request(tx)
+            .input('IdPermission', sql.Int, idPermission)
+            .input('IdPoint', sql.Int, c.idPoint)
+            .input('Accion', sql.VarChar, c.accion)
+            .query(`INSERT INTO UNIPASS.CheckPoints (Estatus, Accion, IdPoint, IdPermission)
+                    SELECT 'Pendiente', @Accion, @IdPoint, @IdPermission
+                    WHERE NOT EXISTS (
+                        SELECT 1 FROM UNIPASS.CheckPoints
+                        WHERE IdPermission = @IdPermission AND IdPoint = @IdPoint AND Accion = @Accion)`);
+    }
+    return { ok: true };
+};
+
 export const findNextPendingEmpleado = (idPermission) =>
     withConnection(async (pool) => {
         const result = await pool.request()
@@ -49,9 +84,10 @@ export const resolveAuthorizeLinkTx = ({ idPermission, actorMatricula, nuevoStat
             // 1) Permission con lock (evita carreras con otro eslabón del mismo permiso).
             const permRes = await new sql.Request(tx)
                 .input('Id', sql.Int, idPermission)
-                .query('SELECT IdPermission, StatusPermission FROM UNIPASS.Permission WITH (UPDLOCK, HOLDLOCK) WHERE IdPermission = @Id');
+                .query('SELECT IdPermission, StatusPermission, IdTipoSalida FROM UNIPASS.Permission WITH (UPDLOCK, HOLDLOCK) WHERE IdPermission = @Id');
             if (permRes.recordset.length === 0) { await tx.rollback(); return { error: 'PERMISSION_NOT_FOUND' }; }
             const permAntes = permRes.recordset[0].StatusPermission;
+            const idTipoSalida = permRes.recordset[0].IdTipoSalida;
 
             // 2) Cadena completa. Clave de orden: `Orden` AUTORITATIVO para cadenas nuevas (Commit B lo
             //    persiste). Si hay Orden duplicados (cadenas HISTÓRICAS mal pobladas, p.ej. 1,1) el valor
@@ -92,6 +128,15 @@ export const resolveAuthorizeLinkTx = ({ idPermission, actorMatricula, nuevoStat
             if (nuevos.some((r) => r.StatusAuthorize === 'Rechazada')) permDespues = 'Rechazada';
             else if (nuevos.every((r) => r.StatusAuthorize === 'Aprobada')) permDespues = 'Aprobada';
             else permDespues = 'Pendiente';
+
+            // 8b) TRANSICIÓN real a Aprobada (estadoAnterior != 'Aprobada' && estadoNuevo == 'Aprobada')
+            //     -> crear los 4 CheckPoints en la MISMA transacción. Obligatorio: si falla la creación,
+            //     ROLLBACK completo (no debe quedar Permission=Aprobada sin sus checks). Solo en la
+            //     transición: un reintento/cadena ya resuelta no regenera artefactos.
+            if (permAntes !== 'Aprobada' && permDespues === 'Aprobada') {
+                const chk = await ensureCheckPointsTx(tx, idPermission, idTipoSalida);
+                if (chk.error) { await tx.rollback(); return { error: chk.error }; }
+            }
 
             // 9) Actualizar Permission solo si cambió.
             if (permDespues !== permAntes) {
