@@ -45,7 +45,7 @@ Contrato OTP externo en [otp-service-contract.md](otp-service-contract.md).
 | GET | `/permission/:Id?page&limit` | — | Historial paginado del alumno. |
 | PUT | `/permission/:Id` | 🔒 | Cancela (solo dueño; 403 `FORBIDDEN_OWNERSHIP`, 404 `PERMISSION_NOT_FOUND`). |
 | DELETE | `/permission/:Id` | 🔒ADMIN | Elimina (cerrado a ADMIN). |
-| PUT | `/permissionValorado/:Id` | — | Resolución final. Body `{ StatusPermission, Observaciones }`. *(7.4B pendiente)* |
+| ~~PUT~~ | ~~`/permissionValorado/:Id`~~ | — | **RETIRADO (7.4B Commit A)** → 404. El estado global lo calcula el backend. |
 | GET | `/PermissionsPreceptor/:Id` | — | Bandeja del preceptor. |
 | GET | `/permissionsEmployee/:Id` | — | Bandeja del empleado/autorizador. `200 []` si vacío. |
 | GET | `/permissionTop/Student/:Id` | — | Últimos 10 del alumno. `200 []`. |
@@ -59,8 +59,8 @@ Contrato OTP externo en [otp-service-contract.md](otp-service-contract.md).
 | Método | Ruta | Auth | Propósito |
 |---|---|---|---|
 | GET | `/autorizadorSalida?tipo=2\|3&nivelAcademico&sexo` | — | Resuelve quién autoriza salidas 2/3 (switch COORDINADOR/PRECEPTOR híbrido). |
-| POST | `/authorize` | — | Alta de eslabón (idempotente → DualRole). *(7.4B pendiente)* |
-| PUT | `/autorizarPermission/:Id` | — | Resuelve eslabón. Body `{ IdEmpleado, StatusAuthorize }`. *(7.4B pendiente)* |
+| POST | `/authorize` | — | Alta de eslabón (idempotente → DualRole). *(Commit B: pasará a server-side)* |
+| PUT | `/autorizarPermission/:Id` | 🔒 | **7.4B Commit A:** resuelve eslabón. Actor = token; body `{ StatusAuthorize: 'Aprobada'\|'Rechazada' }` (IdEmpleado ignorado). Orden estricto; global recalculado; atómico + AuditLog. `401/403 NOT_AUTHORIZER/404/409`. |
 | GET | `/validarAuthorize/:Id?IdPermiso` | — | ¿El empleado participa en la cadena? |
 | GET | `/progresAuthorize/:Id` | — | Avance de la cadena. |
 | GET | `/asignarPrece/:Nivel?Sexo` | — | Dormitorio/preceptor por nivel+sexo. |

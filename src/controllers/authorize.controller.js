@@ -3,17 +3,25 @@
 // avance. Notifica por socket al alumno y al siguiente aprobador pendiente.
 import {
     createAuthorize as createAuthorizeRepo,
-    updateAuthorizeStatus,
-    findUpdatedAuthorize,
     findNextPendingEmpleado,
     findAuthorizeByEmpleadoAndPermiso,
-    findAllAuthorizeByPermission
+    findAllAuthorizeByPermission,
+    resolveAuthorizeLinkTx
 } from '../repositories/authorize.repo.js';
 import { findBedroomBySexoYNivel } from '../repositories/bedroom.repo.js';
 import { findAlumnoMatriculaByPermission } from '../repositories/permission.repo.js';
 import { findConfigValue } from '../repositories/config.repo.js';
-import { findPreceptorMatriculaByDormitorio, findCoordinadorActivo } from '../repositories/user.repo.js';
+import { findPreceptorMatriculaByDormitorio, findCoordinadorActivo, findUserById } from '../repositories/user.repo.js';
 import { emitToUser, emitToEmpleado } from '../util/socketHelpers.js';
+
+// Task 7.4B (Commit A): mapeo de código de dominio -> HTTP para la resolución de eslabón.
+const HTTP_AUTORIZAR = {
+    PERMISSION_NOT_FOUND: 404,
+    NOT_AUTHORIZER: 403,
+    PERMISSION_NOT_PENDING: 409,
+    INVALID_TRANSITION: 409,
+    ORDER_NOT_READY: 409
+};
 
 // Salidas cuyo autorizador se resuelve por el switch: 2=ESPECIAL, 3=A CASA.
 const TIPOS_SALIDA_SWITCH = new Set(['2', '3']);
@@ -139,53 +147,84 @@ export const asignarPreceptor = async (req, res) => {
     }
 };
 
+// PUT /autorizarPermission/:Id  (:Id = IdPermission). REQUIERE verifyToken.
+// Task 7.4B (Commit A): el actor es SIEMPRE el usuario autenticado. Su matrícula se resuelve
+// server-side (req.user.id -> LoginUniPass.Matricula); el IdEmpleado del body se IGNORA. Body válido:
+// { StatusAuthorize: 'Aprobada' | 'Rechazada' }. La correspondencia con la fila Authorize, la máquina
+// de estados, el Orden estricto, el recálculo global de Permission y el AuditLog ocurren en UNA sola
+// transacción (resolveAuthorizeLinkTx). Ver docs/security/authorization-model.md.
 export const definirAutorizacion = async (req, res) => {
     try {
-        const updated = await updateAuthorizeStatus(req.params.Id, req.body.IdEmpleado, req.body.StatusAuthorize);
-        if (!updated) {
-            return res.status(404).json({ message: 'Dato no actualizado' });
+        const idPermission = Number(req.params.Id);
+        if (!Number.isInteger(idPermission) || idPermission <= 0) {
+            return res.status(400).json({ message: 'IdPermission invalido', code: 'MISSING_FIELDS' });
+        }
+        const nuevoStatus = String(req.body?.StatusAuthorize ?? '').trim();
+        if (nuevoStatus !== 'Aprobada' && nuevoStatus !== 'Rechazada') {
+            return res.status(400).json({ message: "StatusAuthorize debe ser 'Aprobada' o 'Rechazada'", code: 'INVALID_STATUS' });
         }
 
-        const updatedRecord = await findUpdatedAuthorize(req.params.Id, req.body.IdEmpleado, req.body.StatusAuthorize);
+        // Identidad del actor SIEMPRE del token -> matrícula autoritativa desde BD (no del body).
+        const actor = await findUserById(req.user.id);
+        if (!actor) {
+            return res.status(404).json({ message: 'Usuario no encontrado', code: 'USER_NOT_FOUND' });
+        }
 
-        let matriculaAlumno = null;
-        let nextEmpleado = null;
-        try {
-            matriculaAlumno = await findAlumnoMatriculaByPermission(req.params.Id);
-            if (req.body.StatusAuthorize === 'Aprobada') {
-                nextEmpleado = await findNextPendingEmpleado(req.params.Id);
+        const accion = nuevoStatus === 'Aprobada' ? 'PERMISSION_AUTHORIZE_APPROVE' : 'PERMISSION_AUTHORIZE_REJECT';
+        const result = await resolveAuthorizeLinkTx({
+            idPermission,
+            actorMatricula: actor.Matricula,
+            nuevoStatus,
+            audit: {
+                actorIdLogin: req.user.id,
+                actorMatricula: actor.Matricula,
+                accion,
+                ip: req.ip || req.headers?.['x-forwarded-for'] || null,
+                endpoint: req.originalUrl || null,
+                metodo: req.method || null
             }
-        } catch (queryError) {
-            console.error('[Socket] Error obteniendo datos para emit:', queryError.message);
+        });
+
+        if (result.error) {
+            return res.status(HTTP_AUTORIZAR[result.error] || 409).json({ message: 'No se pudo resolver la autorizacion', code: result.error });
         }
 
-        res.json(updatedRecord);
+        res.json({
+            IdPermission: idPermission,
+            IdAuthorize: result.idAuthorize,
+            StatusAuthorize: result.authDespues,
+            StatusPermission: result.permDespues
+        });
 
+        // Notificaciones best-effort DESPUES del commit (nunca revierten la operación). El actor y el
+        // siguiente eslabón se derivan server-side, no del cliente.
         try {
             const io = req.app.get('io');
-
-            // 1) Notificar al alumno del cambio de estado
+            let matriculaAlumno = null, nextEmpleado = null;
+            try {
+                matriculaAlumno = await findAlumnoMatriculaByPermission(idPermission);
+                if (nuevoStatus === 'Aprobada') nextEmpleado = await findNextPendingEmpleado(idPermission);
+            } catch (qErr) {
+                console.error('[Socket] Error obteniendo datos para emit:', qErr.message);
+            }
             emitToUser(io, matriculaAlumno, 'permission_status_changed', {
-                idPermission: parseInt(req.params.Id),
-                status: req.body.StatusAuthorize,
-                updatedBy: req.body.IdEmpleado,
+                idPermission,
+                status: result.authDespues,
+                statusPermission: result.permDespues,
+                updatedBy: actor.Matricula,
                 timestamp: new Date().toISOString()
             });
-
-            // 2) Si hay siguiente eslabon (jefe aprobo -> preceptor), notificarlo
             if (nextEmpleado) {
                 await emitToEmpleado(io, null, nextEmpleado, 'new_authorization_assigned', {
-                    idPermission: parseInt(req.params.Id),
-                    status: 'Pendiente',
-                    timestamp: new Date().toISOString()
+                    idPermission, status: 'Pendiente', timestamp: new Date().toISOString()
                 });
             }
         } catch (socketError) {
             console.error('[Socket] Error en definirAutorizacion:', socketError.message);
         }
     } catch (error) {
-        console.error('Error en el servidor:', error);
-        res.status(500).send(error.message);
+        console.error('Error en definirAutorizacion:', error);
+        res.status(500).json({ message: 'Error resolviendo la autorizacion', code: 'SERVER_ERROR' });
     }
 };
 

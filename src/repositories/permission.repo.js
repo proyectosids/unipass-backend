@@ -512,13 +512,7 @@ export const deletePermissionById = (id) =>
         return result.rowsAffected[0] > 0;
     });
 
-export const updatePermissionStatus = (id, status, observaciones) =>
-    withConnection(async (pool) => {
-        const result = await pool.request()
-            .input('IdPermiso', sql.Int, id)
-            .input('StatusPermission', sql.VarChar, status)
-            .input('Observaciones', sql.VarChar, observaciones)
-            .query(`UPDATE UNIPASS.Permission SET StatusPermission = @StatusPermission, Observaciones = @Observaciones
-                    WHERE IdPermission = @IdPermiso`);
-        return result.rowsAffected[0] > 0;
-    });
+// RETIRADO (Task 7.4B, Commit A): updatePermissionStatus(id, status, observaciones) permitía fijar el
+// estado global de Permission desde el cliente (usado por el eliminado PUT /permissionValorado). El
+// estado global ahora lo calcula el backend dentro de resolveAuthorizeLinkTx (authorize.repo). No
+// reintroducir una escritura directa de StatusPermission desde el cliente.

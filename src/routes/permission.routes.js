@@ -3,7 +3,7 @@ import { verifyToken } from "../Middleware/verifityToken.js";
 import { requireCapability } from "../Middleware/requireCapability.js";
 import { requireOwnership } from "../Middleware/requireOwnership.js";
 import { findPermissionOwnerId } from "../repositories/permission.repo.js";
-import { autorizarPermiso, cancelPermission, createPermission, DashboardDocumentos, DashboardPermission, deletePermission, filtrarPermisos, getPermissionForAutorizacion, getPermissionForAutorizacionPrece, getPermissionsByUser, topPermissionEmployee, topPermissionPrece, topPermissionStudent } from "../controllers/permission.controller.js";
+import { cancelPermission, createPermission, DashboardDocumentos, DashboardPermission, deletePermission, filtrarPermisos, getPermissionForAutorizacion, getPermissionForAutorizacionPrece, getPermissionsByUser, topPermissionEmployee, topPermissionPrece, topPermissionStudent } from "../controllers/permission.controller.js";
 
 const router = Router();
 
@@ -25,7 +25,9 @@ router.delete("/permission/:Id", verifyToken, requireCapability(['ADMIN']), dele
 // Cancela (StatusPermission='Cancelado'); Task 7.2: solo el dueño (Permission.IdUser == token.id)
 router.put("/permission/:Id", verifyToken, requireOwnership((req) => findPermissionOwnerId(req.params.Id), { notFoundCode: 'PERMISSION_NOT_FOUND' }), cancelPermission);
 
-router.put("/permissionValorado/:Id", autorizarPermiso); // resolucion final
+// RETIRADO (Task 7.4B, Commit A): PUT /permissionValorado/:Id se ELIMINÓ. El estado global de
+// Permission ya no lo fija el cliente: lo calcula el backend al resolver cada eslabón
+// (PUT /autorizarPermission/:Id -> resolveAuthorizeLinkTx). Ruta inexistente -> 404.
 
 // Ultimos 10 por bandeja
 router.get("/permissionTop/Student/:Id", topPermissionStudent);

@@ -161,7 +161,7 @@ manda hora local sin offset. **200**: eco con `Id` (IdPermission). **400**
 | Endpoint | Request | Efecto / 200 |
 |---|---|---|
 | `PUT /permission/:Id` | — | `StatusPermission = 'Cancelado'` → `"Dato Actualizado"`; emite `permission_cancelled` a los empleados de la cadena |
-| `PUT /permissionValorado/:Id` | `{ "StatusPermission": "Aprobada", "Observaciones": "..." }` | Resolución final → `{ message }`; emite `permission_finalized` al alumno |
+| ~~`PUT /permissionValorado/:Id`~~ | — | **RETIRADO (7.4B Commit A)** → 404. El estado global de `Permission` lo calcula el backend al resolver cada eslabón; el cliente no puede fijarlo. |
 | `DELETE /permission/:Id` | — | Borra la fila → `{ "message": "Dato Eliminado" }` |
 
 ### Bandejas de autorización
@@ -209,12 +209,16 @@ de `FechaRegreso`), `status`, `nombre` (LIKE), `matricula` (LIKE).
 Idempotente por `(IdPermission, IdEmpleado)`: si la misma persona ya está en la cadena (p. ej. es
 jefe **y** preceptor), no duplica — marca `DualRole: true` y **no** re-emite la notificación socket.
 
-### PUT /autorizarPermission/:Id
+### PUT /autorizarPermission/:Id  🔒 (7.4B Commit A)
 
-`:Id` = IdPermission. Body `{ "IdEmpleado": 100200, "StatusAuthorize": "Aprobada" }`.
-`Aprobada`/`Rechazada` sellan `FechaAprobacion = GETDATE()`.
-**200**: registro `Authorize` actualizado. Emite `permission_status_changed` al alumno; si se aprobó
-y queda un eslabón `Pendiente`, emite `new_authorization_assigned` al siguiente empleado.
+`:Id` = IdPermission. **Requiere Bearer.** Body **solo** `{ "StatusAuthorize": "Aprobada" | "Rechazada" }`.
+El **actor se deriva del token** (matrícula resuelta server-side); el `IdEmpleado` del body se **ignora**.
+Reglas: correspondencia de fila (`403 NOT_AUTHORIZER` si no es tu eslabón), máquina de estados
+`Pendiente→Aprobada|Rechazada` (`409 INVALID_TRANSITION`), orden estricto (`409 ORDER_NOT_READY`),
+`404 PERMISSION_NOT_FOUND`, `409 PERMISSION_NOT_PENDING`. El estado global de `Permission` lo **recalcula
+el backend** (rechazo⇒Rechazada; todas aprobadas⇒Aprobada; si queda pendiente⇒Pendiente), todo en una
+transacción con `AuditLog`. **200**: `{ IdPermission, IdAuthorize, StatusAuthorize, StatusPermission }`.
+Emite `permission_status_changed` al alumno y, si aplica, `new_authorization_assigned` al siguiente.
 
 ### GET /progresAuthorize/:Id
 

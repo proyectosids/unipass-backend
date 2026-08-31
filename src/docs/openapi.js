@@ -33,7 +33,7 @@ const E = [
   ['get', '/permission/{Id}', 'Permisos', 'Historial paginado del alumno', { query: { page: '1', limit: '10' } }],
   ['put', '/permission/{Id}', 'Permisos', 'Cancelar (solo dueño)', { auth: 'bearer' }],
   ['delete', '/permission/{Id}', 'Permisos', 'Eliminar (cerrado a ADMIN)', { auth: 'ADMIN' }],
-  ['put', '/permissionValorado/{Id}', 'Permisos', 'Resolución final', { body: { StatusPermission: 'Aprobada', Observaciones: '' } }],
+  // RETIRADO (Task 7.4B, Commit A): PUT /permissionValorado/{Id} eliminado. El estado global lo calcula el backend.
   ['get', '/PermissionsPreceptor/{Id}', 'Permisos', 'Bandeja del preceptor'],
   ['get', '/permissionsEmployee/{Id}', 'Permisos', 'Bandeja del empleado'],
   ['get', '/permissionTop/Student/{Id}', 'Permisos', 'Últimos 10 del alumno'],
@@ -45,7 +45,7 @@ const E = [
   // --- Autorización ---
   ['get', '/autorizadorSalida', 'Autorización', 'Resuelve autorizador salidas 2/3', { query: { tipo: '2', nivelAcademico: 'UNIVERSITARIO', sexo: 'M' } }],
   ['post', '/authorize', 'Autorización', 'Alta de eslabón (idempotente)', { body: { IdEmpleado: 41, NoDepto: 318, IdPermission: 7069, StatusAuthorize: 'Pendiente' } }],
-  ['put', '/autorizarPermission/{Id}', 'Autorización', 'Resolver eslabón', { body: { IdEmpleado: 41, StatusAuthorize: 'Aprobada' } }],
+  ['put', '/autorizarPermission/{Id}', 'Autorización', 'Resolver eslabón (actor = token; global recalculado)', { auth: 'bearer', body: { StatusAuthorize: 'Aprobada' } }],
   ['get', '/validarAuthorize/{Id}', 'Autorización', '¿Participa en la cadena?', { query: { IdPermiso: '7069' } }],
   ['get', '/progresAuthorize/{Id}', 'Autorización', 'Avance de la cadena'],
   ['get', '/asignarPrece/{Nivel}', 'Autorización', 'Dormitorio/preceptor por nivel+sexo', { query: { Sexo: 'M' } }],

@@ -12,7 +12,6 @@ import {
     deletePermissionById,
     findPermissionsForAutorizacionByEmpleado,
     findPermissionsForAutorizacionPreceByEmpleado,
-    updatePermissionStatus,
     findAlumnoMatriculaByPermission,
     findTop10PermissionsByStudent,
     findTop10PermissionsByEmployee,
@@ -326,38 +325,10 @@ export const getPermissionForAutorizacionPrece = async (req, res) => {
     }
 };
 
-export const autorizarPermiso = async (req, res) => {
-    try {
-        const updated = await updatePermissionStatus(req.params.Id, req.body.StatusPermission, req.body.Observaciones);
-        if (!updated) {
-            return res.status(404).json({ message: 'Dato no actualizado' });
-        }
-
-        let matriculaAlumno = null;
-        try {
-            matriculaAlumno = await findAlumnoMatriculaByPermission(req.params.Id);
-        } catch (queryError) {
-            console.error('Error obteniendo matricula para socket:', queryError);
-        }
-
-        res.json({ message: 'Permiso actualizado correctamente' });
-
-        try {
-            const io = req.app.get('io');
-            emitToUser(io, matriculaAlumno, 'permission_finalized', {
-                idPermission: parseInt(req.params.Id),
-                status: req.body.StatusPermission,
-                observaciones: req.body.Observaciones,
-                timestamp: new Date().toISOString()
-            });
-        } catch (socketError) {
-            console.error('[Socket] Error en autorizarPermiso:', socketError.message);
-        }
-    } catch (error) {
-        console.error('Error en el servidor:', error);
-        res.status(500).send(error.message);
-    }
-};
+// RETIRADO (Task 7.4B, Commit A): autorizarPermiso / PUT /permissionValorado/:Id fue ELIMINADO del
+// flujo de aprobación. El cliente ya NO puede fijar Permission.StatusPermission: el estado global lo
+// calcula EXCLUSIVAMENTE el backend al resolver cada eslabón (resolveAuthorizeLinkTx en
+// authorize.controller). Un eventual cierre administrativo se diseñará aparte (ruta + permiso + audit).
 
 export const topPermissionStudent = async (req, res) => {
     try {

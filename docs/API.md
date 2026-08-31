@@ -242,7 +242,7 @@ Body: `{ FechaCheck, Estatus, Observaciones }` (`Estatus: 'Confirmada'` para con
 | `POST /permission` 🔒 | **Task 7.2**: `IdUser` = token (body ignorado). Crea permiso. Body `{ FechaSolicitada, FechaSalida, FechaRegreso, StatusPermission, Motivo, IdTipoSalida, MedioSalida? }`. ⚠️ Resta **6 h** a las tres fechas y guarda en UTC. Emite `new_permission_request`. 401 sin token. |
 | `PUT /permission/:Id` 🔒 | **Cancela** (`StatusPermission='Cancelado'`). **Task 7.2**: solo el dueño (`Permission.IdUser == token.id`), si no **403** `FORBIDDEN_OWNERSHIP`; 404 `PERMISSION_NOT_FOUND`. Emite `permission_cancelled`. |
 | `DELETE /permission/:Id` 🔒 | **Task 7 (§8)**: cerrado a capability `ADMIN` (Frontend no lo usa). Elimina el permiso. 401/403. |
-| `PUT /permissionValorado/:Id` | Resolución final. Body `{ StatusPermission, Observaciones }`. Emite `permission_finalized` al alumno. |
+| ~~`PUT /permissionValorado/:Id`~~ | **RETIRADO (7.4B Commit A)** → 404. El estado global de `Permission` lo calcula el backend al resolver cada eslabón; el cliente ya no lo fija. |
 | `GET /PermissionsPreceptor/:Id` | Permisos pendientes de autorizar por el preceptor (`:Id` = IdEmpleado). Sin datos → `200 null`. |
 | `GET /permissionsEmployee/:Id` | Permisos pendientes de autorizar por un empleado/jefe. Sin datos → `200 []`. Campos explícitos seguros (sin datos sensibles de `LoginUniPass`). |
 | `GET /permissionTop/Student/:Id` | Últimos 10 permisos del alumno. Sin datos → `200 []`. |
@@ -252,7 +252,7 @@ Body: `{ FechaCheck, Estatus, Observaciones }` (`Estatus: 'Confirmada'` para con
 | `GET /dashboardDocumentos/:IdPreceptor` | Conteos de documentos para dashboard. |
 | `GET /permissions/filter/:IdPreceptor?fechaInicio&fechaFin&status&nombre&matricula` | Filtro de permisos. `:IdPreceptor` es la **matrícula numérica** del consultante; según su `TipoUser` filtra como `ADMINISTRATIVO` (global) o `PRECEPTOR` (su dormitorio). Otros roles → 403. Sin resultados → 404. Campos explícitos seguros. |
 
-## 8. Cadena de autorización (`authorize.routes.js`) — Auth: —
+## 8. Cadena de autorización (`authorize.routes.js`) — Auth: mixta (ver por ruta)
 
 Un permiso genera registros en `Authorize` (jefe de trabajo → preceptor…). Si a la misma persona
 le tocan ambos roles, el segundo `POST /authorize` **no duplica**: marca `DualRole = 1`.
@@ -260,7 +260,7 @@ le tocan ambos roles, el segundo `POST /authorize` **no duplica**: marca `DualRo
 | Método y ruta | Descripción |
 |---|---|
 | `POST /authorize` | Body `{ IdEmpleado, NoDepto, IdPermission, StatusAuthorize }`. Idempotente por `(IdPermission, IdEmpleado)` (aplica DualRole). Devuelve eco + `DualRole`. Emite `new_authorization_assigned` al empleado (solo si no fue DualRole). |
-| `PUT /autorizarPermission/:Id` | `:Id` = IdPermission. Body `{ IdEmpleado, StatusAuthorize }` (`Aprobada`/`Rechazada` sella `FechaAprobacion`). Devuelve el registro actualizado. Emite `permission_status_changed` al alumno y, si se aprobó y hay siguiente eslabón pendiente, `new_authorization_assigned` a ese empleado. |
+| `PUT /autorizarPermission/:Id` 🔒 | **7.4B Commit A.** `:Id` = IdPermission. **Requiere Bearer**; actor = token (matrícula server-side), `IdEmpleado` del body **ignorado**. Body `{ StatusAuthorize: 'Aprobada'\|'Rechazada' }`. Correspondencia de fila (`403 NOT_AUTHORIZER`), estados `Pendiente→Aprobada\|Rechazada` (`409`), orden estricto (`409 ORDER_NOT_READY`), `404`. Estado global de `Permission` recalculado por backend; atómico + AuditLog. Emite `permission_status_changed` (+ `new_authorization_assigned` al siguiente). |
 | `GET /validarAuthorize/:Id?IdPermiso=` | ¿El empleado `:Id` tiene autorización sobre ese permiso? 404 si no. |
 | `GET /progresAuthorize/:Id` | Avance de la cadena del permiso `:Id`. Cada fila incluye `DualRole` (bool) y `Roles: ['Jefe de trabajo','Preceptor']` cuando aplica. |
 | `GET /asignarPrece/:Nivel?Sexo=` | Dormitorio/preceptor que corresponde por nivel académico y sexo (consulta `Bedroom`). |

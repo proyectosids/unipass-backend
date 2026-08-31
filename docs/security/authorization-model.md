@@ -299,6 +299,40 @@ Mecanismos soportados:
    `POST /password/reset` (`resetToken` válido/no usado/no expirado → cambia por `IdLogin`, atómico,
    revoca refresh tokens). El `resetToken` no admite seleccionar otra identidad.
 
+# Cadena de autorización de permisos — Task 7.4B, Commit A (resolución segura)
+
+Resuelve `PUT /autorizarPermission/:Id` (`:Id` = IdPermission). **Requiere `verifyToken`.**
+
+- **Actor = token, nunca el body.** La matrícula del actor se resuelve server-side
+  (`req.user.id → LoginUniPass.Matricula`). El `IdEmpleado` del body se **ignora**. Body válido:
+  `{ "StatusAuthorize": "Aprobada" | "Rechazada" }`.
+- **Correspondencia de fila = autorización.** El actor solo puede resolver la fila `Authorize` cuyo
+  `IdEmpleado == su matrícula`. Si no existe esa fila → `403 NOT_AUTHORIZER`. **No** hay bypass por
+  capability/rol (ADMIN override queda para Fase 3).
+- **Máquina de estados (Authorize):** solo `Pendiente → Aprobada` y `Pendiente → Rechazada`. Cualquier
+  otra (re-aprobar, `Rechazada→Aprobada`, etc.) → `409 INVALID_TRANSITION`. Si el `Permission` ya está
+  finalizado/cancelado → `409 PERMISSION_NOT_PENDING`.
+- **Orden estricto:** el eslabón `N` solo se resuelve si todos los previos están `Aprobada`; si no →
+  `409 ORDER_NOT_READY`. El orden real es **`IdAuthorize` ascendente** (inserción Jefe→Preceptor); la
+  columna `Authorize.Orden` es **no fiable** (DEFAULT 1; `createPermissionWithChainTx` no la puebla) →
+  Commit B la corregirá. En Pueblo: Jefe (orden 1) → Preceptor (orden 2); el Preceptor no puede aprobar antes.
+- **Estado global calculado por Backend** (nunca por el cliente): alguna requerida `Rechazada` →
+  `Permission=Rechazada`; todas `Aprobada` → `Aprobada`; si queda alguna `Pendiente` → `Pendiente`.
+- **Atomicidad:** cargar Permission (lock) → validar → actualizar `Authorize` → recalcular global →
+  actualizar `Permission` → `AuditLog`, **todo en una transacción** (`resolveAuthorizeLinkTx`). Cualquier
+  error → `ROLLBACK` (nunca `Authorize=Aprobada` con `Permission` desincronizada).
+- **AuditLog** (en la misma tx): `ActorIdLogin`/`ActorMatricula` del token, acción
+  `PERMISSION_AUTHORIZE_APPROVE|REJECT`, `RecursoId=IdPermission`, `DatosAntes/Despues` con estados de
+  `Authorize` y `Permission`. El actor **nunca** viene del cliente.
+
+**`PUT /permissionValorado/:Id` → RETIRED / REMOVED** (ruta + `autorizarPermiso` + repo
+`updatePermissionStatus`). El cliente ya **no** puede fijar `Permission.StatusPermission`; llamarlo → 404.
+Un eventual cierre administrativo se diseñará aparte (ruta + permiso explícito + AuditLog).
+
+> **Pendiente (Commit B):** la creación de la cadena (`POST /authorize`) para tipos 2/3/4 sigue siendo
+> cliente-dirigida (anónima). Hasta migrarla server-side, este estado **no** es el modelo final seguro.
+> ADMIN override / `PERMISSIONS_APPROVE`/`REJECT` administrativos → Fase 3.
+
 # Fuera de alcance de esta tarea (no mezclar)
-Task 7.4B (cadena de autorización), revisión documental (7.3), BOLA de lecturas — solo se referencian
-en la matriz endpoint→permiso ([[permissions-matrix]]). (`/password/:Correo` legacy: **ya retirado**, ver arriba.)
+Revisión documental (7.3), BOLA de lecturas — solo se referencian en la matriz endpoint→permiso
+([[permissions-matrix]]). (`/password/:Correo` legacy y `/permissionValorado` cliente: **ya retirados**.)
