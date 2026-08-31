@@ -469,13 +469,17 @@ export const createPermissionWithChainTx = ({ permission, authorizers, idempoten
             const idPermission = permRes.recordset[0].IdPermission;
 
             for (const a of authorizers) {
+                // Task 7.4B (Commit B): se persiste Orden (autoritativo para cadenas nuevas) y DualRole
+                // (misma persona jefe+preceptor). StatusAuthorize SIEMPRE nace 'Pendiente'.
                 await new sql.Request(tx)
                     .input('IdEmpleado', sql.Int, a.idEmpleado)
                     .input('NoDepto', sql.Int, a.noDepto)
                     .input('IdPermission', sql.Int, idPermission)
                     .input('StatusAuthorize', sql.VarChar, 'Pendiente')
-                    .query(`INSERT INTO UNIPASS.Authorize (IdEmpleado, NoDepto, IdPermission, StatusAuthorize)
-                            VALUES (@IdEmpleado, @NoDepto, @IdPermission, @StatusAuthorize)`);
+                    .input('Orden', sql.Int, a.orden)
+                    .input('DualRole', sql.Bit, a.dualRole ? 1 : 0)
+                    .query(`INSERT INTO UNIPASS.Authorize (IdEmpleado, NoDepto, IdPermission, StatusAuthorize, Orden, DualRole)
+                            VALUES (@IdEmpleado, @NoDepto, @IdPermission, @StatusAuthorize, @Orden, @DualRole)`);
             }
 
             if (idempotencyKey) {

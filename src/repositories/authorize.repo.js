@@ -1,38 +1,12 @@
 import sql from 'mssql';
 import { withConnection } from '../database/connection.js';
 
-// Repositorio de Authorize: cadena de aprobacion de un permiso, en orden de
-// IdAuthorize (primer eslabon = jefe de trabajo, luego preceptor).
+// Repositorio de Authorize: cadena de aprobacion de un permiso. Orden de la cadena = columna Orden
+// (autoritativa para cadenas nuevas) con fallback IdAuthorize ascendente para cadenas historicas.
 
-// Idempotente: si ya existe Authorize para (IdPermission, IdEmpleado),
-// no inserta duplicado y marca el existente como DualRole.
-export const createAuthorize = ({ idEmpleado, noDepto, idPermission, statusAuthorize }) =>
-    withConnection(async (pool) => {
-        const existing = await pool.request()
-            .input('IdPermission', sql.Int, idPermission)
-            .input('IdEmpleado', sql.Int, idEmpleado)
-            .query(`SELECT IdAuthorize FROM UNIPASS.Authorize
-                    WHERE IdPermission = @IdPermission AND IdEmpleado = @IdEmpleado`);
-
-        if (existing.recordset.length > 0) {
-            const existingId = existing.recordset[0].IdAuthorize;
-            await pool.request()
-                .input('IdAuthorize', sql.Int, existingId)
-                .query('UPDATE UNIPASS.Authorize SET DualRole = 1 WHERE IdAuthorize = @IdAuthorize');
-            return { id: existingId, dualRoleApplied: true };
-        }
-
-        const result = await pool.request()
-            .input('IdEmpleado', sql.Int, idEmpleado)
-            .input('NoDepto', sql.Int, noDepto)
-            .input('IdPermission', sql.Int, idPermission)
-            .input('StatusAuthorize', sql.VarChar, statusAuthorize)
-            .query(`INSERT INTO UNIPASS.Authorize (IdEmpleado, NoDepto, IdPermission, StatusAuthorize)
-                    VALUES (@IdEmpleado, @NoDepto, @IdPermission, @StatusAuthorize);
-                    SELECT SCOPE_IDENTITY() AS IdAuthorize`);
-        if (result.recordset.length === 0) return null;
-        return { id: result.recordset[0].IdAuthorize, dualRoleApplied: false };
-    });
+// RETIRADO (Task 7.4B, Commit B): createAuthorize (alta de fila por datos del cliente) fue ELIMINADO
+// junto con POST /authorize. La creacion de la cadena es interna (createPermissionWithChainTx en
+// permission.repo), siempre 'Pendiente' y con Orden/DualRole autoritativos.
 
 // RETIRADO (Task 7.4B, Commit A): updateAuthorizeStatus/findUpdatedAuthorize (resolución por
 // IdEmpleado del cliente, sin auth ni máquina de estados) fueron ELIMINADAS. La resolución segura y
@@ -63,11 +37,10 @@ export const findAuthorizeByEmpleadoAndPermiso = (idEmpleado, idPermiso) =>
 // carga Permission (lock) -> ubica la fila del actor -> valida estado y Orden estricto -> actualiza
 // la fila -> recalcula el estado global de Permission -> inserta AuditLog. Cualquier error -> ROLLBACK.
 //
-// NOTA de ORDEN: la columna Authorize.Orden NO es fiable (DEFAULT 1 y createPermissionWithChainTx no
-// la setea -> cadenas del backend actual quedan con Orden=1 en todos los eslabones). El orden REAL de
-// la cadena es la secuencia de inserción = IdAuthorize ascendente (Jefe se inserta antes que Preceptor).
-// Por eso el enforcement de "eslabón previo aprobado" usa IdAuthorize, no la columna Orden. (Commit B
-// poblará Orden correctamente al mover la creación de cadena server-side para todos los tipos.)
+// NOTA de ORDEN: desde Commit B las cadenas NUEVAS persisten Orden autoritativo (1=Jefe, 2=Preceptor;
+// salidas 2/3 = Orden 1). Para cadenas HISTÓRICAS mal pobladas (Orden=1,1) el valor no distingue la
+// secuencia -> se usa un fallback determinista: IdAuthorize ascendente (orden de inserción). La clave
+// de orden se decide por permiso (Orden si es distinguible; si hay duplicados -> IdAuthorize).
 export const resolveAuthorizeLinkTx = ({ idPermission, actorMatricula, nuevoStatus, audit }) =>
     withConnection(async (pool) => {
         const tx = new sql.Transaction(pool);
@@ -80,11 +53,15 @@ export const resolveAuthorizeLinkTx = ({ idPermission, actorMatricula, nuevoStat
             if (permRes.recordset.length === 0) { await tx.rollback(); return { error: 'PERMISSION_NOT_FOUND' }; }
             const permAntes = permRes.recordset[0].StatusPermission;
 
-            // 2) Cadena completa (orden real = IdAuthorize ascendente).
+            // 2) Cadena completa. Clave de orden: `Orden` AUTORITATIVO para cadenas nuevas (Commit B lo
+            //    persiste). Si hay Orden duplicados (cadenas HISTÓRICAS mal pobladas, p.ej. 1,1) el valor
+            //    no distingue la secuencia -> fallback seguro a IdAuthorize ascendente (orden de inserción).
             const rowsRes = await new sql.Request(tx)
                 .input('Id', sql.Int, idPermission)
-                .query('SELECT IdAuthorize, IdEmpleado, StatusAuthorize FROM UNIPASS.Authorize WHERE IdPermission = @Id ORDER BY IdAuthorize');
+                .query('SELECT IdAuthorize, IdEmpleado, StatusAuthorize, Orden FROM UNIPASS.Authorize WHERE IdPermission = @Id ORDER BY IdAuthorize');
             const rows = rowsRes.recordset;
+            const ordenDistinguible = new Set(rows.map((r) => r.Orden)).size === rows.length;
+            const claveOrden = (r) => (ordenDistinguible ? r.Orden : r.IdAuthorize);
 
             // 3) Fila del actor por matrícula == IdEmpleado. Sin fila -> no es autorizador de este permiso.
             const actorNum = Number(String(actorMatricula ?? '').trim());
@@ -97,8 +74,8 @@ export const resolveAuthorizeLinkTx = ({ idPermission, actorMatricula, nuevoStat
             // 5) Transición válida: la fila del actor debe estar Pendiente (Pendiente -> Aprobada/Rechazada).
             if (actorRow.StatusAuthorize !== 'Pendiente') { await tx.rollback(); return { error: 'INVALID_TRANSITION' }; }
 
-            // 6) Orden estricto: todo eslabón previo (IdAuthorize menor) debe estar Aprobado.
-            const previos = rows.filter((r) => r.IdAuthorize < actorRow.IdAuthorize);
+            // 6) Orden estricto: todo eslabón previo (clave de orden menor) debe estar Aprobado.
+            const previos = rows.filter((r) => claveOrden(r) < claveOrden(actorRow));
             if (previos.some((r) => r.StatusAuthorize !== 'Aprobada')) { await tx.rollback(); return { error: 'ORDER_NOT_READY' }; }
 
             // 7) Actualizar SOLO la fila del actor (guard de concurrencia sobre Pendiente).

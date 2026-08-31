@@ -58,8 +58,8 @@ Contrato OTP externo en [otp-service-contract.md](otp-service-contract.md).
 ## Autorización y autorizador (`authorize.routes.js`)
 | Método | Ruta | Auth | Propósito |
 |---|---|---|---|
-| GET | `/autorizadorSalida?tipo=2\|3&nivelAcademico&sexo` | — | Resuelve quién autoriza salidas 2/3 (switch COORDINADOR/PRECEPTOR híbrido). |
-| POST | `/authorize` | — | Alta de eslabón (idempotente → DualRole). *(Commit B: pasará a server-side)* |
+| GET | `/autorizadorSalida?tipo=2\|3&nivelAcademico&sexo` | — | Resuelve quién autoriza salidas 2/3 (switch). **Solo lectura; ya NO requerido para crear permiso (7.4B Commit B).** |
+| ~~POST~~ | ~~`/authorize`~~ | — | **RETIRADO (7.4B Commit B)** → 404. La cadena se crea server-side en `POST /permission`. |
 | PUT | `/autorizarPermission/:Id` | 🔒 | **7.4B Commit A:** resuelve eslabón. Actor = token; body `{ StatusAuthorize: 'Aprobada'\|'Rechazada' }` (IdEmpleado ignorado). Orden estricto; global recalculado; atómico + AuditLog. `401/403 NOT_AUTHORIZER/404/409`. |
 | GET | `/validarAuthorize/:Id?IdPermiso` | — | ¿El empleado participa en la cadena? |
 | GET | `/progresAuthorize/:Id` | — | Avance de la cadena. |

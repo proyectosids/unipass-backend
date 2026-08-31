@@ -87,6 +87,36 @@ d('Task 7.4A POST /permission Pueblo (integración)', () => {
         expect(sendToEmployee.mock.calls.some((c) => c[0].matricula === '41')).toBe(false);
     });
 
+    it('Commit B: persiste Orden 1/2 e ignora IdEmpleado/StatusAuthorize/StatusPermission del body', async () => {
+        ulv.getStudentData.mockResolvedValue({ type: 'ALUMNO', work: [{ 'ID DEPTO': 302, 'ID JEFE': 273 }] });
+        ulv.getDepartmentHead.mockResolvedValue({ EmpMatricula: '273' });
+        ulv.getPreceptor.mockResolvedValue({ 'ID JEFE': 41 });
+        const res = await request(app).post('/permission').set('Authorization', `Bearer ${tokenAlumno}`)
+            .send({ ...cuerpo, IdEmpleado: 999999, StatusAuthorize: 'Aprobada', StatusPermission: 'Aprobada' });
+        expect(res.status).toBe(201);
+        creados.push(res.body.Id);
+        expect(res.body.StatusPermission).toBe('Pendiente');
+        const rows = (await pool.request().input('id', sql.Int, res.body.Id)
+            .query('SELECT IdEmpleado, Orden, StatusAuthorize FROM UNIPASS.Authorize WHERE IdPermission=@id ORDER BY Orden')).recordset;
+        expect(rows.map((r) => [r.IdEmpleado, r.Orden, r.StatusAuthorize])).toEqual([[273, 1, 'Pendiente'], [41, 2, 'Pendiente']]);
+        const sp = (await pool.request().input('id', sql.Int, res.body.Id).query('SELECT StatusPermission FROM UNIPASS.Permission WHERE IdPermission=@id')).recordset[0].StatusPermission;
+        expect(sp).toBe('Pendiente'); // body no forzó Aprobada
+    });
+
+    it('Commit B: dedupe (Jefe == Preceptor) -> 1 eslabón Orden 1 con DualRole=1', async () => {
+        ulv.getStudentData.mockResolvedValue({ type: 'ALUMNO', work: [{ 'ID DEPTO': 302, 'ID JEFE': 41 }] });
+        ulv.getDepartmentHead.mockResolvedValue({ EmpMatricula: '41' });
+        ulv.getPreceptor.mockResolvedValue({ 'ID JEFE': 41 });
+        const res = await request(app).post('/permission').set('Authorization', `Bearer ${tokenAlumno}`).send(cuerpo);
+        expect(res.status).toBe(201);
+        creados.push(res.body.Id);
+        const rows = (await pool.request().input('id', sql.Int, res.body.Id)
+            .query('SELECT Orden, DualRole FROM UNIPASS.Authorize WHERE IdPermission=@id')).recordset;
+        expect(rows).toHaveLength(1);
+        expect(rows[0].Orden).toBe(1);
+        expect(Boolean(rows[0].DualRole)).toBe(true);
+    });
+
     it('Pueblo deduplicado (Jefe == Preceptor 41) -> 1 Authorize; UNA sola notificación', async () => {
         ulv.getStudentData.mockResolvedValue({ type: 'ALUMNO', work: [{ 'ID DEPTO': 302, 'ID JEFE': 41 }] });
         ulv.getDepartmentHead.mockResolvedValue({ EmpMatricula: '41' });
@@ -158,14 +188,9 @@ d('Task 7.4A POST /permission Pueblo (integración)', () => {
         expect(await authRows(res.body.Id)).toHaveLength(2);
     });
 
-    it('Tipos 2/3/4 intactos: Tipo 2 no dispara socket ni push al empleado', async () => {
-        const res = await request(app).post('/permission').set('Authorization', `Bearer ${tokenAlumno}`)
-            .send({ ...cuerpo, IdTipoSalida: 2 });
-        expect(res.status).toBe(200); // legacy usa res.json (200)
-        if (res.body.Id) creados.push(res.body.Id);
-        expect(emitToEmpleado).not.toHaveBeenCalled();
-        expect(sendToEmployee).not.toHaveBeenCalled();
-    });
+    // NOTA: el antiguo test "Tipo 2 no dispara socket/push" (comportamiento legacy sin cadena) se
+    // ELIMINÓ: Task 7.4B Commit B migró Tipos 2/3 a creación de cadena server-side. Su cobertura vive
+    // ahora en tests/authorize-chain-create.integration.test.js con datos controlados.
 
     it('Sin work -> 409 STUDENT_WORK_NOT_FOUND, 0 Permission', async () => {
         ulv.getStudentData.mockResolvedValue({ type: 'ALUMNO', work: [] });

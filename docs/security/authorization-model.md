@@ -329,9 +329,38 @@ Resuelve `PUT /autorizarPermission/:Id` (`:Id` = IdPermission). **Requiere `veri
 `updatePermissionStatus`). El cliente ya **no** puede fijar `Permission.StatusPermission`; llamarlo → 404.
 Un eventual cierre administrativo se diseñará aparte (ruta + permiso explícito + AuditLog).
 
-> **Pendiente (Commit B):** la creación de la cadena (`POST /authorize`) para tipos 2/3/4 sigue siendo
-> cliente-dirigida (anónima). Hasta migrarla server-side, este estado **no** es el modelo final seguro.
-> ADMIN override / `PERMISSIONS_APPROVE`/`REJECT` administrativos → Fase 3.
+## Creación de la cadena — Commit B (server-side)
+
+`POST /permission` (requiere `verifyToken`; `IdUser = req.user.id`, Task 7.2) crea Permission **y** la
+cadena `Authorize` de forma **atómica y server-side**. El cliente **no** decide autorizador ni estado.
+
+| Tipo | Autorizador(es) | Fuente | Orden |
+|---|---|---|---|
+| 1 Pueblo | Jefe de trabajo → Preceptor | `resolvePuebloChain` (ULV: JefeDepto + prece) | 1, 2 (dedupe → 1 fila `DualRole=1`) |
+| 2 Especial | único (Coordinador **o** Preceptor) | `resolverAutorizadorSalida` (switch `AUTORIZADOR_SALIDAS`) | 1 |
+| 3 A Casa | único (igual que 2) | `resolverAutorizadorSalida` | 1 |
+| 4 Fin de curso | **no definido** | — | **BLOQUEADO** |
+
+- **Toda fila nace `StatusAuthorize='Pendiente'`; `Permission.StatusPermission='Pendiente'`.** El body no
+  puede fijar estado ni autorizador (`IdEmpleado`/`NoDepto`/`StatusAuthorize`/`StatusPermission`/`IdUser`
+  se ignoran).
+- **Atomicidad:** si no se puede resolver un autorizador requerido, o el autorizador no tiene cuenta
+  UniPass activa → `409` y **no** se crea Permission (sin huérfanos). Todo en una transacción.
+- **`Orden` ahora se persiste** (autoritativo). Cadenas **históricas** con `Orden=1,1` (mal pobladas por
+  el código anterior) se resuelven con **fallback determinista `IdAuthorize` ascendente** en
+  `resolveAuthorizeLinkTx` (clave de orden por permiso: `Orden` si es distinguible; si hay duplicados → `IdAuthorize`).
+- **`POST /authorize` → RETIRED / REMOVED** (ruta + controlador + repo `createAuthorize`). La creación de
+  filas `Authorize` es **operación interna** del backend; llamarlo → 404.
+- **Tipo 4 bloqueado:** `POST /permission` con `IdTipoSalida=4` → `501 SALIDA_TIPO_NO_DISPONIBLE` (sin
+  flujo certificable: `/api/datos/coordinador/:matricula` es el coordinador de FACULTAD del alumno, no
+  está definido como autorizador ni hay regla en código/BD; existe 1 permiso Tipo 4 histórico **sin
+  cadena**). No se inventó lógica; queda pendiente de definición.
+- **`GET /autorizadorSalida`:** se **conserva** (solo lectura), pero su función de seguridad ya es
+  redundante (el backend resuelve el autorizador internamente). Frontend debería dejar de usarlo para crear permisos.
+
+> **Pendiente:** migración de Flutter (Bearer en `/autorizarPermission`, dejar de mandar `IdEmpleado`,
+> no llamar `/permissionValorado` ni `/authorize`, adaptar creación 2/3). Tipo 4 sin definir. ADMIN
+> override / `PERMISSIONS_APPROVE`/`REJECT` administrativos → Fase 3. **7.4B no se declara cerrada** hasta migrar Frontend.
 
 # Fuera de alcance de esta tarea (no mezclar)
 Revisión documental (7.3), BOLA de lecturas — solo se referencian en la matriz endpoint→permiso

@@ -196,18 +196,11 @@ de `FechaRegreso`), `status`, `nombre` (LIKE), `matricula` (LIKE).
 
 ## 4. Cadena de autorización
 
-### POST /authorize
+### ~~POST /authorize~~ — RETIRADO (7.4B Commit B)
 
-```json
-// Request
-{ "IdEmpleado": 100200, "NoDepto": 4, "IdPermission": 6033, "StatusAuthorize": "Pendiente" }
-// 200
-{ "Id": 981, "IdEmpleado": 100200, "NoDepto": 4, "IdPermission": 6033,
-  "StatusAuthorize": "Pendiente", "DualRole": false }
-```
-
-Idempotente por `(IdPermission, IdEmpleado)`: si la misma persona ya está en la cadena (p. ej. es
-jefe **y** preceptor), no duplica — marca `DualRole: true` y **no** re-emite la notificación socket.
+**Eliminado** (ruta + controlador + repo). Llamarlo → **404**. La cadena `Authorize` se crea
+**server-side** dentro de `POST /permission` para tipos 1/2/3 (siempre `StatusAuthorize='Pendiente'`,
+`Orden` autoritativo, `DualRole=1` cuando jefe==preceptor). El cliente ya no inserta autorizadores.
 
 ### PUT /autorizarPermission/:Id  🔒 (7.4B Commit A)
 

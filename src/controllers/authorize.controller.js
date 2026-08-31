@@ -2,7 +2,6 @@
 // DualRole cuando la misma persona es jefe y preceptor), resolucion por eslabon y
 // avance. Notifica por socket al alumno y al siguiente aprobador pendiente.
 import {
-    createAuthorize as createAuthorizeRepo,
     findNextPendingEmpleado,
     findAuthorizeByEmpleadoAndPermiso,
     findAllAuthorizeByPermission,
@@ -93,46 +92,9 @@ export const getAutorizadorSalida = async (req, res) => {
     }
 };
 
-export const createAuthorize = async (req, res) => {
-    try {
-        const result = await createAuthorizeRepo({
-            idEmpleado: req.body.IdEmpleado,
-            noDepto: req.body.NoDepto,
-            idPermission: req.body.IdPermission,
-            statusAuthorize: req.body.StatusAuthorize
-        });
-        if (result === null) {
-            return res.status(404).json({ message: 'No se puede guardar el archivo' });
-        }
-
-        res.json({
-            Id: result.id,
-            IdEmpleado: req.body.IdEmpleado,
-            NoDepto: req.body.NoDepto,
-            IdPermission: req.body.IdPermission,
-            StatusAuthorize: req.body.StatusAuthorize,
-            DualRole: result.dualRoleApplied
-        });
-
-        // No emitimos cuando se aplico DualRole: ya hubo un emit en el primer POST
-        // y la app no debe recibir una segunda notificacion para la misma persona.
-        if (!result.dualRoleApplied) {
-            try {
-                const io = req.app.get('io');
-                await emitToEmpleado(io, null, req.body.IdEmpleado, 'new_authorization_assigned', {
-                    idPermission: req.body.IdPermission,
-                    status: req.body.StatusAuthorize,
-                    timestamp: new Date().toISOString()
-                });
-            } catch (socketError) {
-                console.error('[Socket] Error en createAuthorize:', socketError.message);
-            }
-        }
-    } catch (error) {
-        console.error('Error en el servidor:', error);
-        res.status(500).json({ error: 'Error al crear el servicio' });
-    }
-};
+// RETIRADO (Task 7.4B, Commit B): createAuthorize / POST /authorize fue ELIMINADO. El cliente ya no
+// inserta filas Authorize con IdEmpleado/StatusAuthorize arbitrarios. La cadena la crea el backend
+// server-side (createPermissionWithChainTx) al crear el Permission, siempre 'Pendiente'.
 
 export const asignarPreceptor = async (req, res) => {
     try {

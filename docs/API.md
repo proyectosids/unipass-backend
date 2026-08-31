@@ -239,7 +239,7 @@ Body: `{ FechaCheck, Estatus, Observaciones }` (`Estatus: 'Confirmada'` para con
 | Método y ruta | Descripción |
 |---|---|
 | `GET /permission/:Id?page=1&limit=10` | Permisos del alumno (`:Id` = IdUser), **paginado**: `{ data, pagination: { totalItems, totalPages, currentPage, limit } }`. Campos explícitos seguros. |
-| `POST /permission` 🔒 | **Task 7.2**: `IdUser` = token (body ignorado). Crea permiso. Body `{ FechaSolicitada, FechaSalida, FechaRegreso, StatusPermission, Motivo, IdTipoSalida, MedioSalida? }`. ⚠️ Resta **6 h** a las tres fechas y guarda en UTC. Emite `new_permission_request`. 401 sin token. |
+| `POST /permission` 🔒 | **Task 7.2 + 7.4B/B**: `IdUser` = token (body ignorado). Crea permiso **y la cadena `Authorize` server-side** (tipos 1/2/3); **el cliente no manda autorizador ni estado** (`StatusPermission`/`StatusAuthorize`/`IdEmpleado` ignorados; todo nace `Pendiente`). Body `{ FechaSolicitada, FechaSalida, FechaRegreso, Motivo, IdTipoSalida, MedioSalida? }`. **Tipo 4 → 501 `SALIDA_TIPO_NO_DISPONIBLE`**; tipo inválido → 400. `409` si no se resuelve autorizador (sin permiso huérfano). ⚠️ Resta **6 h** a las fechas (UTC). Emite `new_permission_request`. 401 sin token. |
 | `PUT /permission/:Id` 🔒 | **Cancela** (`StatusPermission='Cancelado'`). **Task 7.2**: solo el dueño (`Permission.IdUser == token.id`), si no **403** `FORBIDDEN_OWNERSHIP`; 404 `PERMISSION_NOT_FOUND`. Emite `permission_cancelled`. |
 | `DELETE /permission/:Id` 🔒 | **Task 7 (§8)**: cerrado a capability `ADMIN` (Frontend no lo usa). Elimina el permiso. 401/403. |
 | ~~`PUT /permissionValorado/:Id`~~ | **RETIRADO (7.4B Commit A)** → 404. El estado global de `Permission` lo calcula el backend al resolver cada eslabón; el cliente ya no lo fija. |
@@ -259,7 +259,7 @@ le tocan ambos roles, el segundo `POST /authorize` **no duplica**: marca `DualRo
 
 | Método y ruta | Descripción |
 |---|---|
-| `POST /authorize` | Body `{ IdEmpleado, NoDepto, IdPermission, StatusAuthorize }`. Idempotente por `(IdPermission, IdEmpleado)` (aplica DualRole). Devuelve eco + `DualRole`. Emite `new_authorization_assigned` al empleado (solo si no fue DualRole). |
+| ~~`POST /authorize`~~ | **RETIRADO (7.4B Commit B)** → 404. La creación de filas `Authorize` es interna del backend (`POST /permission` arma la cadena server-side, siempre `Pendiente`). |
 | `PUT /autorizarPermission/:Id` 🔒 | **7.4B Commit A.** `:Id` = IdPermission. **Requiere Bearer**; actor = token (matrícula server-side), `IdEmpleado` del body **ignorado**. Body `{ StatusAuthorize: 'Aprobada'\|'Rechazada' }`. Correspondencia de fila (`403 NOT_AUTHORIZER`), estados `Pendiente→Aprobada\|Rechazada` (`409`), orden estricto (`409 ORDER_NOT_READY`), `404`. Estado global de `Permission` recalculado por backend; atómico + AuditLog. Emite `permission_status_changed` (+ `new_authorization_assigned` al siguiente). |
 | `GET /validarAuthorize/:Id?IdPermiso=` | ¿El empleado `:Id` tiene autorización sobre ese permiso? 404 si no. |
 | `GET /progresAuthorize/:Id` | Avance de la cadena del permiso `:Id`. Cada fila incluye `DualRole` (bool) y `Roles: ['Jefe de trabajo','Preceptor']` cuando aplica. |

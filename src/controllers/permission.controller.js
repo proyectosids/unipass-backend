@@ -4,9 +4,6 @@
 import {
     findPermissionsByUserPaginated,
     findPermissionById,
-    userExistsById,
-    createPermissionRecord,
-    findAlumnoBasicByLogin,
     cancelPermissionById,
     findEmpleadosAuthorizeByPermission,
     deletePermissionById,
@@ -27,6 +24,7 @@ import {
 import { findUserById, findUserByMatricula } from '../repositories/user.repo.js';
 import { findBedroomIdentificador } from '../repositories/bedroom.repo.js';
 import { resolvePuebloChain } from '../util/puebloChain.js';
+import { resolverAutorizadorSalida } from '../services/authorizerResolver.service.js';
 import * as ulv from '../services/ulvApiService.js';
 import { sendToEmployee } from '../services/notificationService.js';
 import { emitToUser, emitToEmpleado } from '../util/socketHelpers.js';
@@ -81,9 +79,18 @@ export const getPermission = async (req, res) => {
 // POST /permission. Task 7.4A: Tipo 1 (Pueblo) se crea server-side con su cadena
 // (Jefe→Preceptor) de forma transaccional. Tipos 2/3(/4) conservan el comportamiento
 // actual (Flutter orquesta /authorize; coordinador SIN cambios).
+// Task 7.4B (Commit B): la cadena de autorización se crea SIEMPRE server-side. El cliente no decide
+// autorizador ni estado. Tipo 1 = Pueblo (Jefe->Preceptor); Tipos 2/3 = autorizador único por el
+// switch AUTORIZADOR_SALIDAS; Tipo 4 (Fin de curso) = BLOQUEADO (sin flujo certificable, ver
+// docs/task7.4b y ulvApiService PENDING_FLOW_ANALYSIS_TYPE_4); otros = inválido.
 export const createPermission = async (req, res) => {
-    if (Number(req.body?.IdTipoSalida) === 1) return createPermissionPueblo(req, res);
-    return createPermissionLegacy(req, res);
+    const tipo = Number(req.body?.IdTipoSalida);
+    if (tipo === 1) return createPermissionPueblo(req, res);
+    if (tipo === 2 || tipo === 3) return createPermissionConAutorizador(req, res);
+    if (tipo === 4) {
+        return res.status(501).json({ message: 'El tipo de salida Fin de curso no esta disponible', code: 'SALIDA_TIPO_NO_DISPONIBLE' });
+    }
+    return res.status(400).json({ message: 'IdTipoSalida invalido', code: 'SALIDA_TIPO_INVALIDA' });
 };
 
 // Tipo 1 (Pueblo): cadena Jefe de trabajo (orden 1) -> Preceptor (orden 2), dedupe por
@@ -132,7 +139,7 @@ const createPermissionPueblo = async (req, res) => {
         const { idPermission, replayed } = await createPermissionWithChainTx({
             permission: {
                 fechaSolicitada: fechas.fechaSolicitada,
-                statusPermission: req.body.StatusPermission || 'Pendiente',
+                statusPermission: 'Pendiente', // SIEMPRE Pendiente: el cliente no fija el estado inicial
                 fechaSalida: fechas.fechaSalida,
                 fechaRegreso: fechas.fechaRegreso,
                 motivo: req.body.Motivo,
@@ -189,68 +196,90 @@ const createPermissionPueblo = async (req, res) => {
     }
 };
 
-// Tipos 2/3/4: comportamiento ACTUAL (sin cambios de coordinador). Flutter orquesta /authorize.
-const createPermissionLegacy = async (req, res) => {
+// Tipos 2 (Especial) / 3 (A Casa): autorizador ÚNICO resuelto SERVER-SIDE por el switch
+// AUTORIZADOR_SALIDAS (Coordinador o Preceptor). El cliente NO envía IdEmpleado/NoDepto/StatusAuthorize
+// ni autorizador. Permission + Authorize (Orden 1, Pendiente) se crean atómicamente (o nada).
+const createPermissionConAutorizador = async (req, res) => {
+    const idUser = req.user.id;
     try {
-        // Task 7.2: la identidad del alumno viene del token, NO del body.
-        const idUser = req.user.id;
-        const exists = await userExistsById(idUser);
-        if (!exists) {
-            return res.status(400).json({ error: 'El IdUsuario no existe en UNIPASS.Users' });
+        const idTipoSalida = Number(req.body?.IdTipoSalida);
+        const idempotencyKey = req.header('Idempotency-Key') || null;
+        if (idempotencyKey) {
+            const prev = await findPermissionByIdempotencyKey(idempotencyKey);
+            if (prev) return res.status(200).json({ Id: prev, IdTipoSalida: idTipoSalida, StatusPermission: 'Pendiente', replayed: true });
+        }
+
+        // Identidad del alumno = token (Task 7.2). Datos autoritativos desde BD.
+        const alumno = await findUserById(idUser);
+        if (!alumno || !alumno.Matricula) {
+            return res.status(409).json({ message: 'Datos del alumno incompletos', code: 'INCONSISTENT_DATA' });
+        }
+
+        // Autorizador resuelto server-side (misma regla institucional). El body NO participa.
+        const resol = await resolverAutorizadorSalida({ dormitorio: alumno.Dormitorio });
+        if (resol.error) {
+            return res.status(409).json({ message: 'No se pudo resolver el autorizador de la salida', code: resol.error });
+        }
+
+        // El autorizador debe tener cuenta UniPass ACTIVA; si no, la cadena sería irresoluble ->
+        // se rechaza ANTES de crear nada (no dejar Permission huérfano).
+        const autorizador = await findUserByMatricula(String(resol.idEmpleado));
+        if (!autorizador || autorizador.StatusActividad !== 1) {
+            return res.status(409).json({ message: 'El autorizador no tiene cuenta activa', code: 'AUTHORIZER_NOT_REGISTERED' });
         }
 
         const fechas = ajustarFechasUTC(req.body);
-        const fechaSolicitadaUTC = fechas.fechaSolicitada;
-        const fechaSalidaUTC = fechas.fechaSalida;
-        const fechaRegresoUTC = fechas.fechaRegreso;
-
-        const idPermissionCreated = await createPermissionRecord({
-            fechaSolicitada: fechaSolicitadaUTC,
-            statusPermission: req.body.StatusPermission,
-            fechaSalida: fechaSalidaUTC,
-            fechaRegreso: fechaRegresoUTC,
-            motivo: req.body.Motivo,
-            idUser,
-            idTipoSalida: req.body.IdTipoSalida
+        const { idPermission, replayed } = await createPermissionWithChainTx({
+            permission: {
+                fechaSolicitada: fechas.fechaSolicitada,
+                statusPermission: 'Pendiente', // SIEMPRE Pendiente: el cliente no fija el estado inicial
+                fechaSalida: fechas.fechaSalida,
+                fechaRegreso: fechas.fechaRegreso,
+                motivo: req.body.Motivo,
+                idUser,
+                idTipoSalida
+            },
+            authorizers: [{ orden: 1, idEmpleado: resol.idEmpleado, noDepto: resol.noDepto, dualRole: false }],
+            idempotencyKey,
+            idLogin: idUser
         });
 
-        let alumnoInfo = null;
-        try {
-            alumnoInfo = await findAlumnoBasicByLogin(idUser);
-        } catch (queryError) {
-            console.error('Error obteniendo info alumno para socket:', queryError);
-        }
-
-        res.json({
-            Id: idPermissionCreated,
-            FechaSolicitada: fechaSolicitadaUTC,
-            StatusPermission: req.body.StatusPermission,
-            FechaSalida: fechaSalidaUTC,
-            FechaRegreso: fechaRegresoUTC,
-            Motivo: req.body.Motivo,
-            MedioSalida: req.body.MedioSalida,
-            IdUser: idUser,
-            IdTipoSalida: req.body.IdTipoSalida
+        res.status(replayed ? 200 : 201).json({
+            Id: idPermission,
+            IdTipoSalida: idTipoSalida,
+            StatusPermission: 'Pendiente',
+            cadena: [{ orden: 1, IdEmpleado: resol.idEmpleado, rol: resol.modo === 'COORDINADOR' ? 'Coordinación' : 'Preceptor' }],
+            replayed
         });
 
-        try {
-            const io = req.app.get('io');
-            if (alumnoInfo) {
-                emitToUser(io, alumnoInfo.Matricula, 'new_permission_request', {
-                    idPermission: idPermissionCreated,
-                    idTipoSalida: req.body.IdTipoSalida,
-                    matriculaAlumno: String(alumnoInfo.Matricula),
-                    nombreAlumno: alumnoInfo.Nombre,
-                    fechaSalida: fechaSalidaUTC,
-                    timestamp: new Date().toISOString()
+        // Notificaciones best-effort POST-commit (no revierten la creación).
+        if (!replayed) {
+            try {
+                const io = req.app.get('io');
+                emitToUser(io, alumno.Matricula, 'new_permission_request', {
+                    idPermission, idTipoSalida,
+                    matriculaAlumno: String(alumno.Matricula), nombreAlumno: alumno.Nombre,
+                    fechaSalida: fechas.fechaSalida, timestamp: new Date().toISOString()
                 });
+                await emitToEmpleado(io, null, resol.idEmpleado, 'new_authorization_assigned', {
+                    idPermission, status: 'Pendiente', timestamp: new Date().toISOString()
+                });
+            } catch (socketErr) {
+                console.error('[Task7.4B] Notificacion socket post-commit fallo (Permission ya creada):', socketErr.message);
             }
-        } catch (socketError) {
-            console.error('[Socket] Error en createPermission:', socketError.message);
+            try {
+                await sendToEmployee({
+                    matricula: String(resol.idEmpleado),
+                    title: 'Solicitud de salida pendiente',
+                    body: 'Tienes una solicitud de salida pendiente de autorización.'
+                });
+            } catch (pushErr) {
+                console.error('[Task7.4B] Push FCM post-commit fallo (Permission ya creada):', pushErr.message);
+            }
         }
     } catch (err) {
-        console.error('Error en el servidor:', err);
-        res.status(500).json({ error: 'Error al crear el permiso' });
+        console.error('Error creando Permission (2/3):', err);
+        if (!res.headersSent) res.status(500).json({ message: 'Error al crear el permiso', code: 'SERVER_ERROR' });
     }
 };
 

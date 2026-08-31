@@ -37,11 +37,13 @@ export async function resolvePuebloChain(deps, { matricula, identificador }) {
     if (!preceptorMatricula) throw new ChainError('PRECEPTOR_NOT_FOUND');
 
     // 3) Orden Jefe→Preceptor + dedupe por matrícula.
+    // Si jefe == preceptor, un ÚNICO eslabón (Orden 1) con dualRole=true: conserva la semántica
+    // DualRole existente (misma persona, ambos roles) sin duplicar filas ni exigir dos aprobaciones.
     const base = jefeMatricula === preceptorMatricula
-        ? [{ matricula: jefeMatricula, rol: 'Jefe de trabajo', noDepto: Number(idDepto) }]
+        ? [{ matricula: jefeMatricula, rol: 'Jefe de trabajo', noDepto: Number(idDepto), dualRole: true }]
         : [
-            { matricula: jefeMatricula, rol: 'Jefe de trabajo', noDepto: Number(idDepto) },
-            { matricula: preceptorMatricula, rol: 'Preceptor', noDepto: Number(identificador) }
+            { matricula: jefeMatricula, rol: 'Jefe de trabajo', noDepto: Number(idDepto), dualRole: false },
+            { matricula: preceptorMatricula, rol: 'Preceptor', noDepto: Number(identificador), dualRole: false }
         ];
 
     // 4) Conversión matrícula institucional → usuario UniPass (activo). Sin cuenta → error, sin fallback.
@@ -56,7 +58,8 @@ export async function resolvePuebloChain(deps, { matricula, identificador }) {
             idEmpleado: Number(item.matricula),
             idLogin: user.IdLogin,
             noDepto: Number.isFinite(item.noDepto) ? item.noDepto : null,
-            rol: item.rol
+            rol: item.rol,
+            dualRole: item.dualRole
         });
     }
     if (!authorizers.length) throw new ChainError('AUTHORIZATION_CHAIN_INCOMPLETE');

@@ -29,7 +29,7 @@ const E = [
   ['post', '/password/reset', 'Contraseña', 'Aplicar nueva contraseña', { body: { resetToken: '<opaco>', nueva: 'NuevaPass123' } }],
   // RETIRADO (P0): PUT /password/{Correo} eliminado. El correo del cliente no autoriza cambios.
   // --- Permisos ---
-  ['post', '/permission', 'Permisos', 'Crear permiso (Tipo 1 crea cadena server-side)', { auth: 'bearer', body: { FechaSolicitada: '2026-08-24T10:00:00', FechaSalida: '2026-08-25T09:00:00', FechaRegreso: '2026-08-25T18:00:00', StatusPermission: 'Pendiente', Motivo: 'Trámite', IdTipoSalida: 1, MedioSalida: 'Autobús' } }],
+  ['post', '/permission', 'Permisos', 'Crear permiso (cadena server-side tipos 1/2/3; tipo 4 no disponible)', { auth: 'bearer', body: { FechaSolicitada: '2026-08-24T10:00:00', FechaSalida: '2026-08-25T09:00:00', FechaRegreso: '2026-08-25T18:00:00', Motivo: 'Trámite', IdTipoSalida: 1, MedioSalida: 'Autobús' } }],
   ['get', '/permission/{Id}', 'Permisos', 'Historial paginado del alumno', { query: { page: '1', limit: '10' } }],
   ['put', '/permission/{Id}', 'Permisos', 'Cancelar (solo dueño)', { auth: 'bearer' }],
   ['delete', '/permission/{Id}', 'Permisos', 'Eliminar (cerrado a ADMIN)', { auth: 'ADMIN' }],
@@ -43,8 +43,8 @@ const E = [
   ['get', '/dashboardDocumentos/{IdPreceptor}', 'Permisos', 'Conteos de documentos'],
   ['get', '/permissions/filter/{IdPreceptor}', 'Permisos', 'Filtro de permisos', { query: { fechaInicio: '2026-08-01', fechaFin: '2026-08-31', status: '', nombre: '', matricula: '' } }],
   // --- Autorización ---
-  ['get', '/autorizadorSalida', 'Autorización', 'Resuelve autorizador salidas 2/3', { query: { tipo: '2', nivelAcademico: 'UNIVERSITARIO', sexo: 'M' } }],
-  ['post', '/authorize', 'Autorización', 'Alta de eslabón (idempotente)', { body: { IdEmpleado: 41, NoDepto: 318, IdPermission: 7069, StatusAuthorize: 'Pendiente' } }],
+  ['get', '/autorizadorSalida', 'Autorización', 'Resuelve autorizador salidas 2/3 (solo lectura; ya NO requerido para crear el permiso)', { query: { tipo: '2', nivelAcademico: 'UNIVERSITARIO', sexo: 'M' } }],
+  // RETIRADO (Task 7.4B, Commit B): POST /authorize eliminado. La cadena se crea server-side en POST /permission.
   ['put', '/autorizarPermission/{Id}', 'Autorización', 'Resolver eslabón (actor = token; global recalculado)', { auth: 'bearer', body: { StatusAuthorize: 'Aprobada' } }],
   ['get', '/validarAuthorize/{Id}', 'Autorización', '¿Participa en la cadena?', { query: { IdPermiso: '7069' } }],
   ['get', '/progresAuthorize/{Id}', 'Autorización', 'Avance de la cadena'],
