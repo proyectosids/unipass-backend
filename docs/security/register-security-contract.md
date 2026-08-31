@@ -85,10 +85,15 @@ preceptor, gana **VIGILANCIA** (primer criterio). Es una regla explícita, no un
   **concede la capability ADMIN** vía el puente `ADMINISTRATIVO→ADMIN`, así que auto-asignarlo en el
   registro violaría "el registro nunca concede capabilities". → Se provisiona de forma **controlada/manual**.
 
-## 5. Reglas de `Dormitorio` (server-side)
-- ALUMNO **interno** (`RESIDENCIA='INTERNO'`) → `Dormitorio` = `Bedroom.IdBedroom` resuelto por
-  `SEXO` + `NIVEL_EDUCATIVO` (misma lógica que `/asignarPrece`). Si no hay match → NULL.
-- ALUMNO no interno / EMPLEADO → `Dormitorio` = NULL. **El valor del body se IGNORA.**
+## 5. Regla de elegibilidad ALUMNO + `Dormitorio` (server-side, autoridad Backend)
+- **Elegibilidad ALUMNO:** solo el **ALUMNO INTERNO** puede registrarse. Si `ULV.type=ALUMNO` y
+  `RESIDENCIA != 'INTERNO'` → **registro RECHAZADO** con `403 RESIDENCE_NOT_INTERNAL`. La `RESIDENCIA`
+  se toma de **ULV**, no del body: manipular el cliente (`RESIDENCIA/confirmData=INTERNO`) o saltarse
+  Flutter **no** evade la regla. **No depende de la validación de Flutter.**
+- **Dormitorio (solo aplica a ALUMNO ya admitido = interno):** `Dormitorio` = `Bedroom.IdBedroom`
+  resuelto por `SEXO` + `NIVEL_EDUCATIVO` (misma lógica que `/asignarPrece`). Si no hay match → NULL.
+- **EMPLEADO / PRECEPTOR / VIGILANCIA:** no tienen `RESIDENCIA`; **no** les aplica la regla de interno
+  y su `Dormitorio` = NULL. **El valor del body se IGNORA.**
 
 ## 6. Capabilities
 `POST /register` **NUNCA** crea CHECKER / SUPERVISOR / ADMIN / SUPERADMIN ni capability alguna del
@@ -112,6 +117,7 @@ Flutter puede seguir enviando los viejos por compatibilidad; el backend los **ig
 | ULV caído/timeout | 502/504 | `ULV_API_UNAVAILABLE`/`_TIMEOUT` |
 | Matrícula no existe en ULV (en `/register`) | 409 | `STUDENT_NOT_FOUND` |
 | Correo del token ≠ correo actual de ULV (binding) | 409 | `IDENTITY_MISMATCH` |
+| ALUMNO no interno (`RESIDENCIA != 'INTERNO'`) | 403 | `RESIDENCE_NOT_INTERNAL` |
 | Demasiadas solicitudes de OTP (`/register/otp`) | 429 | `TOO_MANY_ATTEMPTS` |
 | registrationToken inválido | 400 | `REGISTRATION_TOKEN_INVALID` |
 | registrationToken expirado | 400 | `REGISTRATION_TOKEN_EXPIRED` |
@@ -131,6 +137,8 @@ Flutter puede seguir enviando los viejos por compatibilidad; el backend los **ig
 - **Correo cambiado entre OTP y registro** (§3 binding): si ULV devuelve un correo distinto al que
   quedó ligado al token, se rechaza (`IDENTITY_MISMATCH`). El token no es transferible a otra identidad.
 - **Spam de OTP / abuso de envío de correo** (§10): límite por matrícula + IP en `/register/otp`.
+- **Alta de ALUMNO no elegible (no interno) saltándose Flutter** (§5): la elegibilidad se valida
+  server-side contra `RESIDENCIA` de ULV → `403 RESIDENCE_NOT_INTERNAL`; el body no puede forzar el alta.
 
 ## 10. Rate-limiting
 Dos guards **en memoria** (además del lockout del proveedor OTP, del que **no se depende en
@@ -155,7 +163,7 @@ con contraseña; respuesta saneada; pruebas de seguridad reutilizables.
 - **Registro (3 pasos):**
   1. `POST /register/otp` `{ "matricula": "..." }` → `200 { message }` (genérico, siempre) | `429 TOO_MANY_ATTEMPTS` (spam). Envía OTP al correo institucional.
   2. `POST /register/verify-otp` `{ "matricula": "...", "otp": "1234" }` → `200 { "registrationToken": "<opaco>" }` | `400 INVALID_OTP` | `429 TOO_MANY_ATTEMPTS`.
-  3. `POST /register` `{ "Matricula": "...", "Contraseña": "...", "registrationToken": "<opaco>" }` → `201 { IdLogin, Matricula, Correo, Nombre, Apellidos, TipoUser, Sexo, FechaNacimiento, Celular, StatusActividad, Dormitorio }` (sin hash/tokens). Errores: `400 REGISTRATION_TOKEN_*`/`WEAK_PASSWORD`, `409 USER_ALREADY_EXISTS`/`STUDENT_NOT_FOUND`/`IDENTITY_MISMATCH`.
+  3. `POST /register` `{ "Matricula": "...", "Contraseña": "...", "registrationToken": "<opaco>" }` → `201 { IdLogin, Matricula, Correo, Nombre, Apellidos, TipoUser, Sexo, FechaNacimiento, Celular, StatusActividad, Dormitorio }` (sin hash/tokens). Errores: `400 REGISTRATION_TOKEN_*`/`WEAK_PASSWORD`, `403 RESIDENCE_NOT_INTERNAL` (ALUMNO no interno), `409 USER_ALREADY_EXISTS`/`STUDENT_NOT_FOUND`/`IDENTITY_MISMATCH`.
   - `TipoUser` devuelto: `ALUMNO` | `EMPLEADO` | `PRECEPTOR` | `VIGILANCIA` (según ULV, precedencia VIGILANCIA→PRECEPTOR→EMPLEADO). `ADMINISTRATIVO` **no** se asigna por registro (manual/controlado).
 - Flutter **deja de**: verificar OTP en cliente, calcular `TipoUser`, enviar Dormitorio/datos institucionales como autoridad, y hardcodear credenciales OTP (el backend asume el envío/verificación).
 - Flutter **solo** captura: matrícula, código OTP y contraseña elegida. Navegación: pantalla matrícula →

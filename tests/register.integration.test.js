@@ -34,6 +34,7 @@ d('Autoregistro seguro (integración)', () => {
     const creados = new Set();     // matrículas con USUARIO creado -> borrar LoginUniPass + token
     const tokensSeed = new Set();  // matrículas con TOKEN sembrado/emitido -> borrar solo token
     const ALUMNO = (mat) => ({ type: 'ALUMNO', matricula: mat, correo: `${mat}@ulv.edu.mx`, nombre: 'REAL', apellidos: 'ULV', sexo: 'M', fechaNacimiento: '2004-01-01', celular: '9610000000', residencia: 'INTERNO', nivelEducativo: 'UNIVERSITARIO' });
+    const ALUMNO_EXTERNO = (mat) => ({ ...ALUMNO(mat), residencia: 'EXTERNO' });
     const EMPLEADO = (mat) => ({ type: 'EMPLEADO', matricula: mat, correo: `${mat}@ulv.edu.mx`, nombre: 'EMP', apellidos: 'ULV', sexo: 'F', fechaNacimiento: '1990-01-01', celular: '9610000001', departamento: 'SEGURIDAD INSTITUCIONAL', idDepartamento: 302 });
 
     beforeAll(async () => {
@@ -119,6 +120,57 @@ d('Autoregistro seguro (integración)', () => {
         expect(r.body.Dormitorio).toBe(4); // M + UNIVERSITARIO -> Bedroom 4 (interno)
         expect(r.body).not.toHaveProperty('Contraseña');
         expect(r.body).not.toHaveProperty('TokenCFM');
+    });
+
+    // ---- register: regla de dominio ALUMNO INTERNO (autoridad server-side) ----
+    it('ALUMNO INTERNO -> registro permitido (201)', async () => {
+        const mat = matUnica(); creados.add(mat);
+        const t = await getToken(mat, ALUMNO(mat));
+        ulv.getPersonData.mockResolvedValue(ALUMNO(mat)); // RESIDENCIA=INTERNO
+        const r = await request(app).post('/register').send({ Matricula: mat, 'Contraseña': 'AltaSegura123', registrationToken: t });
+        expect(r.status).toBe(201); expect(r.body.TipoUser).toBe('ALUMNO');
+    });
+    it('ALUMNO EXTERNO -> 403 RESIDENCE_NOT_INTERNAL, sin crear cuenta', async () => {
+        const mat = matUnica(); tokensSeed.add(mat);
+        const t = await getToken(mat, ALUMNO_EXTERNO(mat));
+        ulv.getPersonData.mockResolvedValue(ALUMNO_EXTERNO(mat)); // RESIDENCIA=EXTERNO
+        const r = await request(app).post('/register').send({ Matricula: mat, 'Contraseña': 'AltaSegura123', registrationToken: t });
+        expect(r.status).toBe(403); expect(r.body.code).toBe('RESIDENCE_NOT_INTERNAL');
+        const row = (await pool.request().input('m', sql.VarChar, mat).query('SELECT 1 FROM UNIPASS.LoginUniPass WHERE Matricula=@m')).recordset[0];
+        expect(row).toBeUndefined();
+    });
+    it('ALUMNO EXTERNO con cliente manipulado (RESIDENCIA/confirmData=INTERNO) -> sigue 403', async () => {
+        const mat = matUnica(); tokensSeed.add(mat);
+        const t = await getToken(mat, ALUMNO_EXTERNO(mat));
+        ulv.getPersonData.mockResolvedValue(ALUMNO_EXTERNO(mat)); // ULV manda: EXTERNO
+        const r = await request(app).post('/register').send({
+            Matricula: mat, 'Contraseña': 'AltaSegura123', registrationToken: t,
+            RESIDENCIA: 'INTERNO', Residencia: 'INTERNO', confirmData: true, TipoUser: 'ALUMNO'
+        });
+        expect(r.status).toBe(403); expect(r.body.code).toBe('RESIDENCE_NOT_INTERNAL');
+    });
+    it('EMPLEADO (sin RESIDENCIA) no se ve afectado por la regla de interno -> 201', async () => {
+        const mat = matUnica(); creados.add(mat);
+        const t = await getToken(mat, EMPLEADO(mat));
+        ulv.getPersonData.mockResolvedValue(EMPLEADO(mat));
+        const r = await request(app).post('/register').send({ Matricula: mat, 'Contraseña': 'AltaSegura123', registrationToken: t });
+        expect(r.status).toBe(201); expect(r.body.TipoUser).toBe('EMPLEADO');
+    });
+    it('PRECEPTOR no se ve afectado por la regla de interno -> 201', async () => {
+        const mat = matUnica(); creados.add(mat);
+        const t = await getToken(mat, EMPLEADO(mat));
+        ulv.getPersonData.mockResolvedValue(EMPLEADO(mat));
+        ulv.getPreceptor.mockResolvedValue({ 'ID JEFE': mat });
+        const r = await request(app).post('/register').send({ Matricula: mat, 'Contraseña': 'AltaSegura123', registrationToken: t });
+        expect(r.status).toBe(201); expect(r.body.TipoUser).toBe('PRECEPTOR');
+    });
+    it('VIGILANCIA no se ve afectado por la regla de interno -> 201', async () => {
+        const mat = matUnica(); creados.add(mat);
+        const t = await getToken(mat, EMPLEADO(mat));
+        ulv.getPersonData.mockResolvedValue(EMPLEADO(mat));
+        ulv.getJefeVigilancia.mockResolvedValue({ EmpMatricula: String(mat) });
+        const r = await request(app).post('/register').send({ Matricula: mat, 'Contraseña': 'AltaSegura123', registrationToken: t });
+        expect(r.status).toBe(201); expect(r.body.TipoUser).toBe('VIGILANCIA');
     });
 
     // Caso A: ULV=ALUMNO, cliente manda ADMINISTRATIVO -> crea ALUMNO

@@ -184,6 +184,13 @@ export const newUser = async (req, res) => {
             return res.status(409).json({ message: 'No se pudo validar la identidad institucional', code: 'IDENTITY_MISMATCH' });
         }
 
+        // 4c) Regla de dominio (autoridad server-side, NO Flutter): solo el ALUMNO INTERNO puede
+        //     registrarse. La RESIDENCIA se toma de ULV, no del body, así que manipular el cliente o
+        //     saltarse Flutter no evade la regla. No aplica a empleados (sin RESIDENCIA).
+        if (tipoUser === 'ALUMNO' && String(persona.residencia || '').toUpperCase() !== 'INTERNO') {
+            return res.status(403).json({ message: 'El registro esta disponible solo para alumnos internos', code: 'RESIDENCE_NOT_INTERNAL' });
+        }
+
         const dormitorio = await resolveDormitorio(persona);
 
         // 5) Alta transaccional (consume token + inserta). NUNCA otorga capabilities.
