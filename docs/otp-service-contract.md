@@ -5,7 +5,16 @@
 **Fecha:** 2026-08-19 (re-verificado contra el código actual para la entrega de 7.1.B).
 **Seguridad:** este documento **NO** incluye credenciales, API keys, tokens ni secretos reales. Donde hay una credencial se referencia **solo el nombre de la variable** (p. ej. `OTP_PASSWORD=<variable de entorno>`). Los valores reales viven en `.env` (gitignored), inyectados con `--dart-define-from-file=.env`.
 
-> ⚠️ **Hallazgo de seguridad (a resolver en 7.1.B):** `OTP_EMAIL` y `OTP_PASSWORD` están **hardcodeados como `defaultValue`** en `lib/config/config_url.dart:35-37` y esa credencial **fue versionada** (commit `27eb2db`, sigue en HEAD) → debe considerarse **comprometida** y **rotarse** al migrar server-side. No se incluye el valor aquí.
+> ⚠️ **Hallazgo de seguridad — estado `PENDING_EXTERNAL_OTP_CREDENTIAL_ROTATION` (2026-08-30):**
+> `OTP_EMAIL`/`OTP_PASSWORD` estuvieron **hardcodeados** en el repo Flutter (`lib/config/config_url.dart:35-37`,
+> versionados en commit `27eb2db`) → la credencial de servicio debe considerarse **potencialmente comprometida**.
+> **Mitigación ya aplicada (exposición client-side eliminada):** Flutter retiró `OTP_URL`/`OTP_EMAIL`/`OTP_PASSWORD`
+> y el acceso directo al proveedor; las credenciales viven **solo server-side** (backend `.env`, gitignored).
+> La credencial **actual** del backend fue validada como funcional.
+> **Pendiente:** la **rotación** del password del usuario de servicio **depende del administrador externo del
+> proveedor OTP** (el equipo de UniPass consume el servicio pero **no** administra esas credenciales), por lo
+> que no puede ejecutarse desde este proyecto. Ver el riesgo/dependencia en
+> `docs/security/register-security-contract.md` § Dependencias externas.
 
 Todos los endpoints son **`POST`** y cuelgan de `OTP_URL`. Todos usan `Content-Type: application/json`. Los que requieren autenticación mandan el header **`x-access-token`** con el token obtenido en el paso 1.
 

@@ -169,3 +169,18 @@ con contraseña; respuesta saneada; pruebas de seguridad reutilizables.
 - Flutter **solo** captura: matrícula, código OTP y contraseña elegida. Navegación: pantalla matrícula →
   pantalla OTP → pantalla contraseña → alta.
 - Expiraciones: OTP según proveedor; `registrationToken` 10 min, un solo uso.
+
+## 13. Dependencias externas / riesgos abiertos
+### `PENDING_EXTERNAL_OTP_CREDENTIAL_ROTATION`
+- **Qué:** el password del **usuario de servicio del proveedor OTP** debe rotarse porque estuvo
+  hardcodeado y versionado en el repo Flutter (`config_url.dart`, commit `27eb2db`) → potencialmente comprometido.
+- **Motivo por el que queda pendiente:** *la rotación depende del administrador externo del servicio OTP.*
+  UniPass **consume** el servicio pero **no administra** esas credenciales, por lo que no puede ejecutar la
+  rotación desde este proyecto.
+- **Mitigación ya aplicada:** la **exposición client-side fue eliminada** — Flutter retiró
+  `OTP_URL`/`OTP_EMAIL`/`OTP_PASSWORD` y el acceso directo al proveedor; las credenciales viven **solo
+  server-side** (backend `.env`, gitignored). La credencial actual del backend fue validada como funcional.
+- **Estado / impacto:** **NO bloquea** el cierre técnico del autoregistro seguro (la superficie de exposición
+  ya no existe). Permanece como **riesgo/dependencia externa abierta** hasta que el **administrador del
+  proveedor** confirme la rotación. Detalle en `docs/otp-service-contract.md`.
+- **Cierre:** cuando el administrador externo confirme la rotación, actualizar este marcador a resuelto.
