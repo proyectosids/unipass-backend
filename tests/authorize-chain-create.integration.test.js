@@ -21,7 +21,7 @@ const hasDb = !!process.env.DB_SERVER;
 const d = hasDb ? describe : describe.skip;
 
 d('Task 7.4B Commit B - creación de cadena server-side (integración)', () => {
-    let pool, tokenAlumno, alumno = {}, autor = {}, autor2 = {};
+    let pool, tokenAlumno, tokenAutor, alumno = {}, autor = {}, autor2 = {};
     const permisos = new Set();
     const cuentas = new Set();
     const cuerpo = { FechaSolicitada: '2026-09-01T10:00:00', FechaSalida: '2026-09-02T09:00:00', FechaRegreso: '2026-09-02T18:00:00', Motivo: 'Test 7.4B/B' };
@@ -60,6 +60,7 @@ d('Task 7.4B Commit B - creación de cadena server-side (integración)', () => {
         autor = await insertAccount({ matricula: String(base + 1), tipo: 'PRECEPTOR' });
         autor2 = await insertAccount({ matricula: String(base + 2), tipo: 'PRECEPTOR' });
         tokenAlumno = generateAccessToken(alumno);
+        tokenAutor = generateAccessToken(autor); // PRECEPTOR (no ALUMNO)
     });
     afterAll(async () => {
         for (const id of permisos) {
@@ -78,6 +79,16 @@ d('Task 7.4B Commit B - creación de cadena server-side (integración)', () => {
     });
 
     const countPerm = async () => (await pool.request().input('u', sql.Int, alumno.IdLogin).query('SELECT COUNT(*) n FROM UNIPASS.Permission WHERE IdUser=@u')).recordset[0].n;
+
+    // Gate de tipo de usuario: solo ALUMNO crea salidas
+    it('EMPLEADO/PRECEPTOR no puede crear salida -> 403 FORBIDDEN_USER_TYPE (body TipoUser ignorado)', async () => {
+        const res = await request(app).post('/permission').set('Authorization', `Bearer ${tokenAutor}`)
+            .send({ ...cuerpo, IdTipoSalida: 2, TipoUser: 'ALUMNO' });
+        expect(res.status).toBe(403);
+        expect(res.body.code).toBe('FORBIDDEN_USER_TYPE');
+        const n = (await pool.request().input('u', sql.Int, autor.IdLogin).query('SELECT COUNT(*) n FROM UNIPASS.Permission WHERE IdUser=@u')).recordset[0].n;
+        expect(n).toBe(0); // no creó nada para el no-alumno
+    });
 
     // Tipo 2
     it('Tipo 2: crea Permission + 1 Authorize server-side (Orden 1, Pendiente); IdUser del token', async () => {

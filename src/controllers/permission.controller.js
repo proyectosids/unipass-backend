@@ -84,6 +84,17 @@ export const getPermission = async (req, res) => {
 // switch AUTORIZADOR_SALIDAS; Tipo 4 (Fin de curso) = BLOQUEADO (sin flujo certificable, ver
 // docs/task7.4b y ulvApiService PENDING_FLOW_ANALYSIS_TYPE_4); otros = inválido.
 export const createPermission = async (req, res) => {
+    // Gate de tipo de usuario (server-side): solicitar una salida es un flujo de ALUMNO. La identidad
+    // y el TipoUser se resuelven desde el token (req.user.id -> LoginUniPass), NUNCA del body: enviar
+    // { TipoUser:'ALUMNO' } no evade esta validación. Empleado/Preceptor/Vigilancia/Administrativo -> 403.
+    const actor = await findUserById(req.user.id);
+    if (!actor) {
+        return res.status(404).json({ message: 'Usuario no encontrado', code: 'USER_NOT_FOUND' });
+    }
+    if (actor.TipoUser !== 'ALUMNO') {
+        return res.status(403).json({ message: 'Solo un alumno puede solicitar una salida', code: 'FORBIDDEN_USER_TYPE' });
+    }
+
     const tipo = Number(req.body?.IdTipoSalida);
     if (tipo === 1) return createPermissionPueblo(req, res);
     if (tipo === 2 || tipo === 3) return createPermissionConAutorizador(req, res);
