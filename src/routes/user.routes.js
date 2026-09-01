@@ -45,7 +45,8 @@ router.put("/terminarCargo/:Matricula", endCargo);
 // Task 7.2: identidad del token (matrícula del path ignorada). Un 403 aquí no debe bloquear login.
 router.put("/TokenDispositivo/:Matricula", verifyToken, registerTokenFCM);
 
-// Marca el expediente documental como completo/incompleto
-router.put('/Documentacion/:Matricula', documentComplet);
+// CONTENIDO (Task 7.3 D1-A · DEPRECATED — REMOVE D1-C): ahora exige Bearer y NO permite fijar 0/1
+// arbitrario (:Matricula y StatusDoc se ignoran); devuelve el Documentacion actual del usuario (SELF).
+router.put('/Documentacion/:Matricula', verifyToken, documentComplet);
 
 export default router;

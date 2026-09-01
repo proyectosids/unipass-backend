@@ -10,7 +10,7 @@ export const findDocumentByLoginAndType = (idLogin, idDocumento) =>
             .request()
             .input('id', sql.Int, idLogin)
             .input('IdDocumento', sql.Int, idDocumento)
-            .query('SELECT Archivo FROM UNIPASS.Doctos WHERE IdLogin = @id AND IdDocumento = @IdDocumento');
+            .query('SELECT IdDoctos, Archivo FROM UNIPASS.Doctos WHERE IdLogin = @id AND IdDocumento = @IdDocumento');
         return result.recordset[0] || null;
     });
 
@@ -179,33 +179,72 @@ export const findArchivosFiltered = ({ dormitorio, nombre, apellidos, matricula 
         return result.recordset;
     });
 
-export const approveDocument = (idLogin, idDocumento) =>
-    withConnection(async (pool) => {
-        const result = await pool
-            .request()
-            .input('Id', sql.Int, idLogin)
-            .input('IdDocumento', sql.Int, idDocumento)
-            .query("UPDATE UNIPASS.Doctos SET StatusRevision = 'Aprobado' WHERE IdLogin = @Id AND IdDocumento = @IdDocumento");
-        return result.rowsAffected[0] > 0;
-    });
+// RETIRADO (Task 7.3 D1-A): approveDocument (PUT /statusRevision, 0 consumidores Flutter, anónimo) y
+// rejectDocument (por IdLogin+IdDocumento con RechazadoPor = matrícula del CLIENTE -> impersonación)
+// fueron ELIMINADAS. El rechazo seguro y atómico vive en rejectDocumentTx (abajo): actor del token,
+// scope de dormitorio server-side, máquina de estados y AuditLog en una transacción.
 
-export const rejectDocument = ({ idLogin, idDocumento, motivo, comentario, matriculaPreceptor }) =>
+// Task 7.3 D1-A - Rechazo SEGURO y ATÓMICO de un documento (identificado por IdDoctos). En una tx:
+// carga el doc (lock) -> valida SCOPE (dormitorio dueño == dormitorio del preceptor, server-side) ->
+// máquina de estados (Pendiente -> Rechazado, guardado también en el WHERE del UPDATE) -> persiste
+// RechazadoPor = MATRÍCULA DEL ACTOR (token, nunca del cliente) -> AuditLog. Devuelve dueño/tipo para
+// la notificación post-commit. Errores de dominio -> { error }.
+export const rejectDocumentTx = ({ idDoctos, actorMatricula, actorDormitorio, motivo, comentario, audit }) =>
     withConnection(async (pool) => {
-        const result = await pool
-            .request()
-            .input('IdLogin', sql.Int, idLogin)
-            .input('IdDocumento', sql.Int, idDocumento)
-            .input('Motivo', sql.VarChar(80), motivo)
-            .input('Comentario', sql.NVarChar(500), comentario || null)
-            .input('Matricula', sql.VarChar(20), matriculaPreceptor)
-            .query(`UPDATE UNIPASS.Doctos
-                    SET StatusRevision = 'Rechazado',
-                        MotivoRechazo = @Motivo,
-                        ComentarioRechazo = @Comentario,
-                        RechazadoPor = @Matricula,
-                        FechaRechazo = GETDATE()
-                    WHERE IdLogin = @IdLogin AND IdDocumento = @IdDocumento`);
-        return result.rowsAffected[0] > 0;
+        const tx = new sql.Transaction(pool);
+        await tx.begin();
+        try {
+            const docRes = await new sql.Request(tx)
+                .input('Id', sql.Int, idDoctos)
+                .query('SELECT IdDoctos, IdLogin, IdDocumento, StatusRevision FROM UNIPASS.Doctos WITH (UPDLOCK, HOLDLOCK) WHERE IdDoctos = @Id');
+            if (docRes.recordset.length === 0) { await tx.rollback(); return { error: 'DOCUMENT_NOT_FOUND' }; }
+            const doc = docRes.recordset[0];
+
+            // Scope: dormitorio del dueño == dormitorio del preceptor (ambos server-side).
+            const ownerRes = await new sql.Request(tx)
+                .input('Id', sql.Int, doc.IdLogin)
+                .query('SELECT Dormitorio FROM UNIPASS.LoginUniPass WHERE IdLogin = @Id');
+            const ownerDorm = ownerRes.recordset[0]?.Dormitorio ?? null;
+            if (ownerDorm == null || actorDormitorio == null || Number(ownerDorm) !== Number(actorDormitorio)) {
+                await tx.rollback(); return { error: 'FORBIDDEN_DOCUMENT_SCOPE' };
+            }
+
+            // Máquina de estados: solo Pendiente -> Rechazado (guard en memoria y en el UPDATE).
+            if (doc.StatusRevision !== 'Pendiente') { await tx.rollback(); return { error: 'INVALID_DOCUMENT_TRANSITION' }; }
+
+            const upd = await new sql.Request(tx)
+                .input('Id', sql.Int, idDoctos)
+                .input('Motivo', sql.VarChar(80), motivo)
+                .input('Comentario', sql.NVarChar(500), comentario || null)
+                .input('RechazadoPor', sql.VarChar(20), actorMatricula) // actor del token, NUNCA del cliente
+                .query(`UPDATE UNIPASS.Doctos
+                        SET StatusRevision='Rechazado', MotivoRechazo=@Motivo, ComentarioRechazo=@Comentario,
+                            RechazadoPor=@RechazadoPor, FechaRechazo=GETDATE()
+                        WHERE IdDoctos=@Id AND StatusRevision='Pendiente'`);
+            if (upd.rowsAffected[0] !== 1) { await tx.rollback(); return { error: 'INVALID_DOCUMENT_TRANSITION' }; }
+
+            await new sql.Request(tx)
+                .input('ActorIdLogin', sql.Int, audit.actorIdLogin ?? null)
+                .input('ActorMatricula', sql.VarChar(15), audit.actorMatricula ?? null)
+                .input('Accion', sql.NVarChar(60), 'DOCUMENT_REJECT')
+                .input('Recurso', sql.NVarChar(40), 'Doctos')
+                .input('RecursoId', sql.NVarChar(40), String(idDoctos))
+                .input('Resultado', sql.NVarChar(12), 'SUCCESS')
+                .input('DatosAntes', sql.NVarChar(sql.MAX), JSON.stringify({ statusRevision: 'Pendiente' }))
+                .input('DatosDespues', sql.NVarChar(sql.MAX), JSON.stringify({ statusRevision: 'Rechazado', idDocumento: doc.IdDocumento, motivo: motivo }))
+                .input('Ip', sql.VarChar(45), audit.ip ?? null)
+                .input('Endpoint', sql.NVarChar(120), audit.endpoint ?? null)
+                .input('Metodo', sql.VarChar(10), audit.metodo ?? null)
+                .input('Contexto', sql.NVarChar(300), `IdLoginDueno=${doc.IdLogin}`)
+                .query(`INSERT INTO UNIPASS.AuditLog (ActorIdLogin, ActorMatricula, Capability, Permission, Accion, Recurso, RecursoId, Resultado, DatosAntes, DatosDespues, Ip, Endpoint, Metodo, Contexto)
+                        VALUES (@ActorIdLogin, @ActorMatricula, NULL, NULL, @Accion, @Recurso, @RecursoId, @Resultado, @DatosAntes, @DatosDespues, @Ip, @Endpoint, @Metodo, @Contexto)`);
+
+            await tx.commit();
+            return { ok: true, idLogin: doc.IdLogin, idDocumento: doc.IdDocumento };
+        } catch (error) {
+            try { await tx.rollback(); } catch (rbErr) { console.error('[Tx] rollback error:', rbErr.message); }
+            throw error;
+        }
     });
 
 // Devuelve { tokenFCM, tipoDocumento, matricula } para construir la notificacion.

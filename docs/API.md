@@ -160,7 +160,7 @@ Body: `{ "refreshToken": "..." }` → **204** (idempotente). 400 `MISSING_REFRES
 | `PUT /terminarCargo/:Matricula` | — | Limpia `IdCargoDelegado` y borra el registro de `Position` asociado. |
 | ~~`GET /VerToken/:Matricula`~~ | — | **RETIRADO (BOLA/IDOR R1-A)** → 404. Exponía `TokenCFM` (token de push) de cualquiera. La resolución FCM (incluida la suplencia de `Position`) es **interna** server-side (`notificationService`). |
 | `PUT /TokenDispositivo/:Matricula` | ✅ | Body `{ TokenCFM }`. Registra token FCM. **Task 7.2**: matrícula del token (`:Matricula` ignorado). |
-| `PUT /Documentacion/:Matricula` | — | Body `{ StatusDoc }` (int). Marca expediente completo/incompleto. |
+| `PUT /Documentacion/:Matricula` 🔒 | ✅ | **CONTENIDO (7.3 D1-A, DEPRECATED — REMOVE D1-C)**: Bearer; ignora `:Matricula` y `StatusDoc`; devuelve el `Documentacion` propio (SELF) sin escritura arbitraria. |
 
 ### Registro — `POST /register` (`resgister.routes.js`)
 
@@ -319,8 +319,9 @@ Subida con Multer a `public/uploads/` (nombre = timestamp + extensión). Tipos p
 | `GET /doctos/:Id` | Todos los documentos del usuario `:Id` (IdLogin). 404 si no hay. |
 | `GET /getExpediente/:IdDormi` | Expedientes de los alumnos de un dormitorio (revisión del preceptor). |
 | `GET /getArchivos/:Dormitorio/:Nombre?/:Apellidos?/:Matricula?` | Archivos filtrados; solo `Dormitorio` es obligatorio. |
-| `PUT /statusRevision/:Id` | Aprueba documento. `:Id` = IdLogin, body `{ IdDocumento }`. |
-| `PUT /doctosMul/reject/:Id` | Rechaza documento. `:Id` = IdLogin, body `{ IdDocumento, Motivo, Comentario?, MatriculaPreceptor }`. Valida que `MatriculaPreceptor` exista y sea PRECEPTOR/EMPLEADO/VIGILANCIA (403 si no). Emite `document_rejected` (socket) **y** push FCM al alumno. |
+| ~~`PUT /statusRevision/:Id`~~ | **RETIRADO (7.3 D1-A)** → 404 (aprobación anónima). No hay operación pública de aprobar. |
+| `PUT /documents/:idDoctos/reject` 🔒 | **7.3 D1-A**: rechazo seguro. Bearer; actor = token; **solo PRECEPTOR** (403 `FORBIDDEN_DOCUMENT_REVIEWER`); **scope** dorm preceptor==alumno (403 `FORBIDDEN_DOCUMENT_SCOPE`); estados `Pendiente→Rechazado` (409); `404`. Body `{ motivo, comentario? }`. `RechazadoPor`=token; AuditLog; socket+FCM post-commit. |
+| `PUT /doctosMul/reject/:Id` 🔒 | **LEGADO CONTENIDO (DEPRECATED — REMOVE D1-C)**: Bearer + misma lógica segura; `MatriculaPreceptor` del body **ignorado**. |
 
 ## 11. Cargos delegados / Position (`position.routes.js`) — Auth: —
 

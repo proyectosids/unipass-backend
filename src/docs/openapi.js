@@ -19,7 +19,7 @@ const E = [
   ['put', '/cambiarCargo/{Matricula}', 'Usuarios', 'Asignar cargo delegado', { body: { IdCargoDelegado: 7 } }],
   ['put', '/terminarCargo/{Matricula}', 'Usuarios', 'Terminar cargo + borrar Position'],
   ['put', '/TokenDispositivo/{Matricula}', 'Usuarios', 'Registrar token FCM (Task 7.2: matrícula del token)', { auth: 'bearer', body: { TokenCFM: 'fcm_token' } }],
-  ['put', '/Documentacion/{Matricula}', 'Usuarios', 'Marcar expediente', { body: { StatusDoc: 1 } }],
+  ['put', '/Documentacion/{Matricula}', 'Usuarios', 'CONTENIDO (7.3 D1-A, DEPRECATED): Bearer; ignora Matricula/StatusDoc; devuelve Documentacion propia (SELF)', { auth: 'bearer' }],
   // --- Contraseña ---
   ['put', '/me/password', 'Contraseña', 'Cambio autenticado (min 8, 1 letra, 1 número)', { auth: 'bearer', body: { actual: 'PASS_ACTUAL', nueva: 'NuevaPass123' } }],
   ['post', '/password/forgot', 'Contraseña', 'Recuperación por matrícula (respuesta genérica)', { body: { matricula: '221068' } }],
@@ -76,8 +76,9 @@ const E = [
   ['get', '/doctos/{Id}', 'Documentos', 'Documentos del usuario'],
   ['get', '/getExpediente/{IdDormi}', 'Documentos', 'Expedientes por dormitorio'],
   ['get', '/getArchivos/{Dormitorio}', 'Documentos', 'Archivos filtrados'],
-  ['put', '/statusRevision/{Id}', 'Documentos', 'Aprobar documento', { body: { IdDocumento: 2 } }],
-  ['put', '/doctosMul/reject/{Id}', 'Documentos', 'Rechazar documento + socket + push', { body: { IdDocumento: 2, Motivo: 'Ilegible', Comentario: '', MatriculaPreceptor: '41' } }],
+  // RETIRADO (7.3 D1-A): PUT /statusRevision/{Id} eliminado (aprobación anónima, 0 consumidores) → 404.
+  ['put', '/documents/{idDoctos}/reject', 'Documentos', '7.3 D1-A: rechazo SEGURO (PRECEPTOR del dorm; state machine + AuditLog)', { auth: 'bearer', body: { motivo: 'DOCUMENTO_ILEGIBLE', comentario: '' } }],
+  ['put', '/doctosMul/reject/{Id}', 'Documentos', 'LEGADO CONTENIDO (DEPRECATED — REMOVE D1-C): Bearer; actor del token; ignora MatriculaPreceptor', { auth: 'bearer', body: { IdDocumento: 2, Motivo: 'DOCUMENTO_ILEGIBLE', Comentario: '' } }],
   // --- Dormitorios / puntos / cargos ---
   ['get', '/dormitorio/{Sexo}/{NivelAcademico}', 'Catálogos', 'Bedroom por sexo/nivel'],
   ['get', '/getPoints/{Id}', 'Catálogos', 'Puntos de un tipo de salida'],

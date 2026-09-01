@@ -415,6 +415,48 @@ Flutter solo refresca
 Fuera de este cierre (tareas separadas, sin tocar): GET `checks*` anónimos, `GET /getPoints`, BOLA/IDOR,
 `PUT /checks/:id`, CheckerGrant, scopes, FCM, ADMIN/SUPERADMIN.
 
+# Task 7.3 — Revisión documental, D1-A (contención crítica de ESCRITURAS)
+
+Cierra las escrituras documentales **anónimas** y la **impersonación** del revisor.
+
+```text
+ANTES:  Flutter decide identidad/scope → PUT anónimo → Backend confía (RechazadoPor = matrícula del body)
+DESPUÉS: Bearer → PRECEPTOR → actor server-side → scope de dormitorio server-side → state machine →
+         transacción → AuditLog → notificaciones post-commit
+```
+
+- **`PUT /statusRevision/:Id` → RETIRED / 404** (aprobación anónima, 0 consumidores Flutter; **no** hay
+  operación pública de APROBAR — Flutter solo rechaza).
+- **`PUT /documents/:idDoctos/reject`** (nuevo, Bearer): actor = token; **solo `TipoUser='PRECEPTOR'`**
+  (403 `FORBIDDEN_DOCUMENT_REVIEWER`); **scope** = `Dormitorio` del preceptor == del alumno dueño, ambos
+  server-side (403 `FORBIDDEN_DOCUMENT_SCOPE`); **máquina de estados** solo `Pendiente → Rechazado`
+  (409 `INVALID_DOCUMENT_TRANSITION`, con guard en el `WHERE`); `RechazadoPor` = matrícula **del token**;
+  `AuditLog` (`DOCUMENT_REJECT`) en la misma transacción; `404 DOCUMENT_NOT_FOUND`. Body: `{ motivo, comentario? }`.
+- **`PUT /doctosMul/reject/:Id`** — LEGADO **CONTENIDO** (DEPRECATED — REMOVE D1-C): ahora Bearer + la
+  MISMA lógica segura; el `MatriculaPreceptor` del body se **ignora**. Puente hasta migrar Flutter.
+- **`PUT /Documentacion/:Matricula`** — CONTENIDO (DEPRECATED — REMOVE D1-C): Bearer; **ignora** `:Matricula`
+  y `StatusDoc`; devuelve el `Documentacion` **propio** (SELF) sin escritura arbitraria de 0/1.
+- **Notificaciones:** post-commit best-effort (socket `document_rejected` + FCM), destinatario y `TokenCFM`
+  resueltos server-side desde `Doctos.IdLogin`; reutilizadas por el endpoint nuevo y el legado.
+- **SELF (Task 7.2) intactos:** `POST /doctosMul`, `PUT /doctosMul/updateProfile`, `DELETE /doctosMul/:Id`
+  (ownership por `req.user.id`). El re-upload `Rechazado → Pendiente` ya lo hace `createDocument` (upsert
+  por `(IdLogin, IdDocumento)`, limpia Motivo/Comentario/RechazadoPor/FechaRechazo; sin duplicados — 0 históricos).
+- **Capability:** ya existe `DOCUMENTS_VIEW/MANAGE`; **no se creó** ninguna. El revisor normal se autoriza
+  por **rol PRECEPTOR + scope de dormitorio**, no por capability.
+- **`Documentacion` = presencia/completitud de uploads** bajo la semántica actual — **NO** "documentos aprobados".
+
+### Follow-ups documentados (NO en D1-A)
+- **D1-A.2 — `Documentacion` server-computed:** requiere la **regla de tipos requeridos por alumno**, que
+  **no existe server-side** (el catálogo tiene 4 reglamentos mutuamente excluyentes por dormitorio; la lista
+  vive en Flutter). Pendiente de esa regla para `recalculateDocumentationStatusTx` + wiring atómico en
+  `POST /doctosMul` / `DELETE /doctosMul` / re-upload.
+- **`FOLLOW_UP_BUSINESS_RULE_REJECTED_DOCUMENT_BLOCKS_EXIT`:** decidir si un documento presente pero
+  `Rechazado` debe invalidar `Documentacion` (hoy sigue contando como "subido"). No resuelto en D1-A.
+- **D2 — lecturas documentales** (`GET /doctos`, `/doctosProfile`, `/getExpediente`, `/getArchivos`)
+  siguen **anónimas**: pendientes en el bloque de lecturas BOLA.
+- **D1-B** (Flutter migra a `/documents/:idDoctos/reject`) → **D1-C** (retirar legados). **Despliegue coordinado**
+  (Flutter viejo no manda Bearer). **Task 7.3 NO CLOSED.**
+
 # BOLA/IDOR R1 (usuarios/credenciales/tokens) = CLOSED
 
 Cierra la exposición **anónima** de datos de usuario (`LoginUniPass SELECT *` con `Contraseña`/hash y

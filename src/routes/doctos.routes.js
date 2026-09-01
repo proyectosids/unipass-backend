@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { verifyToken } from "../Middleware/verifityToken.js";
-import { deleteFileDoc, getDocumentsByUser, saveDocument, getProfile, uploadProfile, getExpedientesAlumnos, getArchivosAlumno, aprobarDocumento, rejectDocument } from "../controllers/doctos.controller.js";
+import { deleteFileDoc, getDocumentsByUser, saveDocument, getProfile, uploadProfile, getExpedientesAlumnos, getArchivosAlumno, rejectDocument, rejectDocumentByIdDoctos } from "../controllers/doctos.controller.js";
 import { Subirimagen } from "../Middleware/storage.js";
 import multer from "multer";
 
@@ -26,8 +26,14 @@ router.get("/getExpediente/:IdDormi", getExpedientesAlumnos)
 
 router.get("/getArchivos/:Dormitorio/:Nombre?/:Apellidos?/:Matricula?", getArchivosAlumno);
 
-router.put("/statusRevision/:Id", aprobarDocumento) // aprueba (:Id = IdLogin)
+// RETIRADO (Task 7.3 D1-A): PUT /statusRevision/:Id (aprobación anónima, 0 consumidores) -> 404.
 
-router.put("/doctosMul/reject/:Id", rejectDocument) // rechaza + socket + push FCM
+// Task 7.3 D1-A: rechazo documental SEGURO. Bearer; actor = token PRECEPTOR; scope de dormitorio +
+// máquina de estados (Pendiente->Rechazado) + AuditLog server-side. Body { motivo, comentario? }.
+router.put("/documents/:idDoctos/reject", verifyToken, rejectDocumentByIdDoctos);
+
+// LEGADO CONTENIDO (DEPRECATED — REMOVE D1-C): ahora requiere Bearer y aplica la misma lógica segura;
+// el MatriculaPreceptor del body se IGNORA. Puente mientras Flutter migra al endpoint de arriba.
+router.put("/doctosMul/reject/:Id", verifyToken, rejectDocument);
 
 export default router;

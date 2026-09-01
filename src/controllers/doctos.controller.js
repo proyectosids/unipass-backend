@@ -11,16 +11,16 @@ import {
     deleteDocumentById,
     findExpedientesByDormitorio,
     findArchivosFiltered,
-    approveDocument,
-    rejectDocument as rejectDocumentRepo,
+    rejectDocumentTx,
     findRejectNotificationContext
 } from '../repositories/doctos.repo.js';
-import { findUserByMatricula } from '../repositories/user.repo.js';
+import { findUserById } from '../repositories/user.repo.js';
 import { deleteUploadedFile } from '../util/fileStorage.js';
 import { emitToUser } from '../util/socketHelpers.js';
 import { notifyDocumentRejection } from '../util/notifications.js';
 
-const PRECEPTOR_ROLES = new Set(['PRECEPTOR', 'EMPLEADO', 'VIGILANCIA']);
+// Task 7.3 D1-A: el revisor documental normal es ÚNICAMENTE TipoUser='PRECEPTOR' (decisión fijada:
+// EMPLEADO/VIGILANCIA/ADMINISTRATIVO NO se autorizan por defecto; la permisividad legacy no es política).
 
 export const getProfile = async (req, res) => {
     try {
@@ -217,93 +217,79 @@ export const getArchivosAlumno = async (req, res) => {
     }
 };
 
-export const aprobarDocumento = async (req, res) => {
-    // Task 7.3: candidato a endpoint muerto (Frontend no lo consume). Log para juntar
-    // evidencia de uso real antes de deprecar/eliminar. No cambia el comportamiento.
-    console.warn(`[DEPRECATION][Task7] PUT /statusRevision/:Id invocado (IdLogin=${req.params.Id}) — candidato a endpoint muerto`);
+// RETIRADO (Task 7.3 D1-A): aprobarDocumento / PUT /statusRevision/:Id fue ELIMINADO (0 consumidores
+// Flutter; aprobación anónima). No hay operación pública de APROBAR (Flutter solo rechaza).
+
+// Task 7.3 D1-A - código de dominio -> HTTP para el rechazo seguro.
+const HTTP_DOC_REJECT = { DOCUMENT_NOT_FOUND: 404, FORBIDDEN_DOCUMENT_SCOPE: 403, INVALID_DOCUMENT_TRANSITION: 409 };
+
+// Notificación POST-COMMIT del rechazo (socket + FCM), best-effort: no revierte nada. Destinatario y
+// TokenCFM se resuelven server-side desde Doctos.IdLogin. Reutilizada por el endpoint nuevo y el legacy.
+const notificarRechazo = async (req, { idLogin, idDocumento, motivo, comentario, rechazadoPor }) => {
+    let context = null;
+    try { context = await findRejectNotificationContext(idLogin, idDocumento); }
+    catch (e) { console.error('Error contexto notificacion rechazo:', e.message); }
+    if (!context) return;
     try {
-        const updated = await approveDocument(req.params.Id, req.body.IdDocumento);
-        if (!updated) {
-            return res.status(404).json({ message: 'Documento no encontrado' });
-        }
-        return res.status(200).json({ message: 'Documento aprobado correctamente' });
+        const io = req.app.get('io');
+        emitToUser(io, context.Matricula, 'document_rejected', {
+            idLogin, idDocumento, tipoDocumento: context.TipoDocumento, motivo,
+            comentario: comentario || null, rechazadoPor, timestamp: new Date().toISOString()
+        });
+    } catch (e) { console.error('[Socket] Error document_rejected:', e.message); }
+    try {
+        await notifyDocumentRejection({ tokenFCM: context.TokenFCM, tipoDocumento: context.TipoDocumento, motivo, matricula: context.Matricula });
+    } catch (e) { console.error('[FCM] Error notifyDocumentRejection:', e.message); }
+};
+
+// Lógica de rechazo SEGURA compartida: actor del token -> PRECEPTOR -> scope de dormitorio + máquina de
+// estados + AuditLog (en rejectDocumentTx) -> notificación post-commit. El actor NUNCA viene del body.
+const ejecutarRechazo = async (req, res, { idDoctos, motivo, comentario }) => {
+    if (!Number.isInteger(idDoctos) || idDoctos <= 0) return res.status(400).json({ message: 'IdDoctos invalido', code: 'MISSING_FIELDS' });
+    if (!motivo) return res.status(400).json({ message: 'motivo es obligatorio', code: 'MISSING_FIELDS' });
+
+    const actor = await findUserById(req.user.id);
+    if (!actor) return res.status(404).json({ message: 'Usuario no encontrado', code: 'USER_NOT_FOUND' });
+    if (actor.TipoUser !== 'PRECEPTOR') {
+        return res.status(403).json({ message: 'Solo un preceptor puede rechazar documentos', code: 'FORBIDDEN_DOCUMENT_REVIEWER' });
+    }
+
+    const result = await rejectDocumentTx({
+        idDoctos, actorMatricula: actor.Matricula, actorDormitorio: actor.Dormitorio, motivo, comentario,
+        audit: { actorIdLogin: req.user.id, actorMatricula: actor.Matricula, ip: req.ip || req.headers?.['x-forwarded-for'] || null, endpoint: req.originalUrl || null, metodo: req.method || null }
+    });
+    if (result.error) {
+        return res.status(HTTP_DOC_REJECT[result.error] || 409).json({ message: 'No se pudo rechazar el documento', code: result.error });
+    }
+
+    res.json({ message: 'Documento rechazado', IdDoctos: idDoctos, StatusRevision: 'Rechazado' });
+    await notificarRechazo(req, { idLogin: result.idLogin, idDocumento: result.idDocumento, motivo, comentario, rechazadoPor: actor.Matricula });
+};
+
+// PUT /documents/:idDoctos/reject (Bearer). Contrato NUEVO seguro. Body { motivo, comentario? }.
+export const rejectDocumentByIdDoctos = async (req, res) => {
+    try {
+        await ejecutarRechazo(req, res, { idDoctos: Number(req.params.idDoctos), motivo: req.body?.motivo, comentario: req.body?.comentario });
     } catch (error) {
-        console.error('Error actualizando estado de revisión:', error);
-        return res.status(500).json({ message: 'Error en el servidor' });
+        console.error('Error en rejectDocumentByIdDoctos:', error);
+        if (!res.headersSent) res.status(500).json({ message: 'Error al rechazar el documento', code: 'SERVER_ERROR' });
     }
 };
 
+// LEGADO CONTENIDO (Task 7.3 D1-A · DEPRECATED — REMOVE D1-C): PUT /doctosMul/reject/:Id. Ahora requiere
+// Bearer y usa la MISMA lógica segura (actor del token, PRECEPTOR, scope, state machine). El
+// `MatriculaPreceptor` del body se IGNORA. Localiza el doc por (IdLogin=path, IdDocumento=body) solo como
+// puente mientras Flutter migra a PUT /documents/:idDoctos/reject.
 export const rejectDocument = async (req, res) => {
     try {
         const idLogin = parseInt(req.params.Id, 10);
-        const { IdDocumento, Motivo, Comentario, MatriculaPreceptor } = req.body;
-
-        if (!idLogin || !IdDocumento || !Motivo || !MatriculaPreceptor) {
-            return res.status(400).json({
-                message: 'idLogin, IdDocumento, Motivo y MatriculaPreceptor son obligatorios'
-            });
-        }
-
-        const preceptor = await findUserByMatricula(MatriculaPreceptor);
-        if (!preceptor) {
-            return res.status(403).json({ message: 'Preceptor no encontrado' });
-        }
-        if (!PRECEPTOR_ROLES.has(preceptor.TipoUser)) {
-            return res.status(403).json({ message: 'No tienes permisos para rechazar documentos' });
-        }
-
-        const rejected = await rejectDocumentRepo({
-            idLogin,
-            idDocumento: IdDocumento,
-            motivo: Motivo,
-            comentario: Comentario,
-            matriculaPreceptor: MatriculaPreceptor
-        });
-
-        if (!rejected) {
-            return res.status(404).json({ message: 'Documento no encontrado' });
-        }
-
-        res.status(200).json({ message: 'Documento rechazado' });
-
-        let context = null;
-        try {
-            context = await findRejectNotificationContext(idLogin, IdDocumento);
-        } catch (queryError) {
-            console.error('Error obteniendo contexto para notificacion:', queryError.message);
-        }
-
-        if (context) {
-            try {
-                const io = req.app.get('io');
-                emitToUser(io, context.Matricula, 'document_rejected', {
-                    idLogin,
-                    idDocumento: IdDocumento,
-                    tipoDocumento: context.TipoDocumento,
-                    motivo: Motivo,
-                    comentario: Comentario || null,
-                    rechazadoPor: MatriculaPreceptor,
-                    timestamp: new Date().toISOString()
-                });
-            } catch (socketError) {
-                console.error('[Socket] Error en rejectDocument:', socketError.message);
-            }
-
-            try {
-                await notifyDocumentRejection({
-                    tokenFCM: context.TokenFCM,
-                    tipoDocumento: context.TipoDocumento,
-                    motivo: Motivo,
-                    matricula: context.Matricula
-                });
-            } catch (fcmError) {
-                console.error('[FCM] Error en notifyDocumentRejection:', fcmError.message);
-            }
-        }
+        const { IdDocumento, Motivo, Comentario } = req.body || {};
+        if (!idLogin || !IdDocumento) return res.status(400).json({ message: 'IdLogin(path) e IdDocumento son obligatorios', code: 'MISSING_FIELDS' });
+        const doc = await findDocumentByLoginAndType(idLogin, IdDocumento);
+        if (!doc) return res.status(404).json({ message: 'Documento no encontrado', code: 'DOCUMENT_NOT_FOUND' });
+        await ejecutarRechazo(req, res, { idDoctos: doc.IdDoctos, motivo: Motivo, comentario: Comentario });
     } catch (error) {
-        console.error('Error en el servidor:', error);
-        if (!res.headersSent) {
-            return res.status(500).json({ message: 'Error al rechazar el documento' });
-        }
+        console.error('Error en rejectDocument (legacy):', error);
+        if (!res.headersSent) res.status(500).json({ message: 'Error al rechazar el documento', code: 'SERVER_ERROR' });
     }
 };

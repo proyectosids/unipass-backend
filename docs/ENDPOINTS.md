@@ -25,7 +25,7 @@ Contrato OTP externo en [otp-service-contract.md](otp-service-contract.md).
 | PUT | `/cambiarCargo/:Matricula` | — | Asigna cargo delegado. Body `{ IdCargoDelegado }`. |
 | PUT | `/terminarCargo/:Matricula` | — | Termina cargo + borra Position. |
 | PUT | `/TokenDispositivo/:Matricula` | 🔒 | **Task 7.2**: matrícula del token (path ignorado). Body `{ TokenCFM }`. |
-| PUT | `/Documentacion/:Matricula` | — | Marca expediente. Body `{ StatusDoc }`. |
+| PUT | `/Documentacion/:Matricula` | 🔒 | **CONTENIDO (7.3 D1-A, DEPRECATED)**: Bearer; ignora Matricula/StatusDoc; devuelve Documentacion propia. |
 
 ## Contraseña (`user.routes.js`, `password.routes.js`)
 | Método | Ruta | Auth | Propósito |
@@ -103,8 +103,9 @@ Contrato OTP externo en [otp-service-contract.md](otp-service-contract.md).
 | GET | `/doctos/:Id` | — | Documentos del usuario. |
 | GET | `/getExpediente/:IdDormi` | — | Expedientes por dormitorio. |
 | GET | `/getArchivos/:Dormitorio/:Nombre?/:Apellidos?/:Matricula?` | — | Archivos filtrados. |
-| PUT | `/statusRevision/:Id` | — | Aprueba doc. Body `{ IdDocumento }`. *(candidato a endpoint muerto)* |
-| PUT | `/doctosMul/reject/:Id` | — | Rechaza doc + socket + push. Body `{ IdDocumento, Motivo, Comentario?, MatriculaPreceptor }`. |
+| ~~PUT~~ | ~~`/statusRevision/:Id`~~ | — | **RETIRADO (7.3 D1-A)** → 404. |
+| PUT | `/documents/:idDoctos/reject` | 🔒 | **7.3 D1-A**: rechazo seguro (PRECEPTOR del dorm; state machine; AuditLog). Body `{ motivo, comentario? }`. |
+| PUT | `/doctosMul/reject/:Id` | 🔒 | **LEGADO CONTENIDO (DEPRECATED — REMOVE D1-C)**: Bearer; `MatriculaPreceptor` ignorado. |
 
 ## Dormitorios, puntos, cargos (`bedroom/point/position.routes.js`)
 | Método | Ruta | Auth | Propósito |

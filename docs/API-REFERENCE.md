@@ -117,7 +117,7 @@ seguros** `IdLogin, Matricula, Nombre, Apellidos, TipoUser` + `ExisteEnPosition`
 | `PUT /terminarCargo/:Matricula` | — | `{ "message": "Estado actualizado y registro eliminado exitosamente" }` (limpia `IdCargoDelegado` **y** borra la fila de `Position`) |
 | ~~`GET /VerToken/:Matricula`~~ | — | **RETIRADO (BOLA/IDOR R1-A)** → 404. Exponía `TokenCFM`; la resolución FCM (incl. suplencia `Position`) es interna server-side. |
 | `PUT /TokenDispositivo/:Matricula` 🔒 | `{ "TokenCFM": "fcm_token..." }` | Registra el token del **propio** dispositivo (matrícula = token). |
-| `PUT /Documentacion/:Matricula` | `{ "StatusDoc": 1 }` | `"Dato Actulizado"` (string) |
+| `PUT /Documentacion/:Matricula` 🔒 | — (ignora `StatusDoc`) | **CONTENIDO (7.3 D1-A, DEPRECATED — REMOVE D1-C)**: Bearer; ignora `:Matricula`/`StatusDoc`; devuelve `{ Documentacion }` del usuario propio (SELF), sin escritura arbitraria. |
 
 Errores: 400 `{ message: "El registro no tiene un IdCargoDelegado válido" }` (terminarCargo), 404 `{ message: "Dato no encontrado" }`.
 
@@ -509,25 +509,28 @@ Mismos fields que el POST. Reemplaza el archivo (borra el viejo del disco), rese
 
 | Endpoint | Request | Efecto |
 |---|---|---|
-| `PUT /statusRevision/:Id` (`:Id`=IdLogin) | `{ "IdDocumento": 2 }` | `StatusRevision = 'Aprobado'` → `{ message }` |
-| `DELETE /doctosMul/:Id` (`:Id`=IdLogin) | `{ "IdDocumento": 2 }` | Borra registro + archivo físico → `{ "message": "DATO ELIMINADO" }` |
+| ~~`PUT /statusRevision/:Id`~~ | — | **RETIRADO (7.3 D1-A)** → 404 (aprobación anónima; no hay operación pública de aprobar). |
+| `DELETE /doctosMul/:Id` (`:Id`=IdLogin) 🔒 | `{ "IdDocumento": 2 }` | Borra registro + archivo físico (ownership por token). |
 
-### PUT /doctosMul/reject/:Id
+### PUT /documents/:idDoctos/reject 🔒 (7.3 D1-A) — rechazo seguro
 
-`:Id` = IdLogin del alumno.
+Actor = **token PRECEPTOR** (nunca del body). Identifica el documento por **`:idDoctos`**.
 
 ```json
-// Request (Comentario opcional)
-{ "IdDocumento": 2, "Motivo": "Documento ilegible", "Comentario": "Vuelve a escanearlo",
-  "MatriculaPreceptor": "100200" }
+// Request
+{ "motivo": "DOCUMENTO_ILEGIBLE", "comentario": "Vuelve a escanearlo" }
 // 200
-{ "message": "Documento rechazado" }
+{ "message": "Documento rechazado", "IdDoctos": 981, "StatusRevision": "Rechazado" }
 ```
 
-Valida que `MatriculaPreceptor` exista y sea `PRECEPTOR`/`EMPLEADO`/`VIGILANCIA` (**403** si no).
-Marca `StatusRevision='Rechazado'` + motivo/comentario/quién/cuándo. Después de responder:
-emite socket `document_rejected` **y** push FCM al alumno (si el token FCM es inválido, lo limpia de BD).
-**400** si falta `IdDocumento`, `Motivo` o `MatriculaPreceptor`.
+Pipeline server-side: `verifyToken` → `TipoUser='PRECEPTOR'` (403 `FORBIDDEN_DOCUMENT_REVIEWER`) →
+`Dormitorio` preceptor == dueño (403 `FORBIDDEN_DOCUMENT_SCOPE`) → `Pendiente→Rechazado`
+(409 `INVALID_DOCUMENT_TRANSITION`) → `RechazadoPor`=matrícula del token → `AuditLog` (`DOCUMENT_REJECT`),
+todo en una transacción. `404 DOCUMENT_NOT_FOUND`. Post-commit best-effort: socket `document_rejected` +
+FCM al alumno (destinatario/token resueltos server-side desde `Doctos.IdLogin`).
+
+**`PUT /doctosMul/reject/:Id`** — LEGADO **CONTENIDO** (DEPRECATED — REMOVE D1-C): ahora Bearer + la misma
+lógica segura; `MatriculaPreceptor` del body **ignorado**; localiza por `(IdLogin path, IdDocumento body)`.
 
 ---
 

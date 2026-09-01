@@ -14,7 +14,6 @@ import {
     findUserByMatriculaOrCorreo,
     findSafeUserById,
     updateUserPasswordById,
-    updateDocumentacion,
     updateTokenFCM,
     findIdCargoDelegadoByMatricula,
     clearIdCargoDelegado,
@@ -285,13 +284,18 @@ export const putMePassword = async (req, res) => {
 // - SearchTokenFCM (GET /VerToken/:Matricula): exponía TokenCFM (token de push) de cualquier matrícula.
 //   Sin consumidores HTTP; la resolución FCM es INTERNA (notificationService.findTokenFCMByMatricula). → 404.
 
+// CONTENIDO (Task 7.3 D1-A · DEPRECATED — REMOVE D1-C): PUT /Documentacion/:Matricula. Antes era
+// ANÓNIMO y el cliente fijaba LoginUniPass.Documentacion (0/1) de cualquier matrícula. Ahora requiere
+// Bearer y NO acepta escritura arbitraria: la `:Matricula` del path y el `StatusDoc` del body se
+// IGNORAN. Devuelve el valor ACTUAL de Documentacion del usuario autenticado (SELF), sin modificarlo.
+// El recálculo server-computed real se implementa en D1-A.2 (requiere la regla de tipos requeridos).
 export const documentComplet = async (req, res) => {
     try {
-        const updated = await updateDocumentacion(req.params.Matricula, req.body.StatusDoc);
-        if (!updated) {
-            return res.status(404).json({ message: 'Dato no encontrado' });
+        const user = await findUserById(req.user.id);
+        if (!user) {
+            return res.status(404).json({ message: 'Usuario no encontrado', code: 'USER_NOT_FOUND' });
         }
-        res.json('Dato Actulizado');
+        return res.json({ Documentacion: user.Documentacion ?? null });
     } catch (error) {
         res.status(500).json({ error: error.message });
     }
