@@ -11,7 +11,6 @@ import {
 } from '../util/tokens.js';
 import {
     findUserById,
-    findUserByMatricula,
     findUserByMatriculaOrCorreo,
     findSafeUserById,
     updateUserPasswordById,
@@ -46,22 +45,8 @@ export const getMe = async (req, res) => {
     }
 };
 
-// BOLA/IDOR R1 (puente de contención, requiere verifyToken): solo SELF — :Id debe ser el IdLogin del
-// token. Responde proyección segura. Se migra a GET /me (R1-B) y se retira el legacy (R1-C).
-export const getUser = async (req, res) => {
-    try {
-        if (Number(req.params.Id) !== req.user.id) {
-            return res.status(403).json({ message: 'Solo puedes consultar tu propio usuario', code: 'FORBIDDEN_SELF_ONLY' });
-        }
-        const user = await findSafeUserById(req.user.id);
-        if (!user) {
-            return res.status(404).json({ message: 'Dato no encontrado' });
-        }
-        return res.json(toSafeUser(user));
-    } catch (error) {
-        res.status(500).json({ error: error.message });
-    }
-};
+// RETIRADO (BOLA/IDOR R1-C): getUser (GET /user/:Id) fue ELIMINADO. La única lectura SELF de usuario
+// es GET /me (getMe). El identificador del cliente ya no selecciona usuario.
 
 export const endCargo = async (req, res) => {
     try {
@@ -289,22 +274,8 @@ export const putMePassword = async (req, res) => {
 // Rutas soportadas: PUT /me/password (identidad = token) y el flujo de recuperación con resetToken
 // (/password/forgot -> /password/verify-otp -> /password/reset).
 
-// BOLA/IDOR R1 (puente de contención, requiere verifyToken): solo SELF — la matrícula debe ser la del
-// token. Responde proyección segura (sin hash/TokenCFM). Se migra a GET /me (R1-B) y se retira (R1-C).
-export const BuscarUserMatricula = async (req, res) => {
-    try {
-        if (String(req.params.Matricula) !== String(req.user.matricula)) {
-            return res.status(403).json({ message: 'Solo puedes consultar tu propio usuario', code: 'FORBIDDEN_SELF_ONLY' });
-        }
-        const user = await findUserByMatricula(req.params.Matricula);
-        if (!user) {
-            return res.status(404).json({ message: 'Dato no encontrado' });
-        }
-        return res.json(toSafeUser(user));
-    } catch (error) {
-        res.status(500).json({ error: error.message });
-    }
-};
+// RETIRADO (BOLA/IDOR R1-C): BuscarUserMatricula (GET /userMatricula/:Matricula) fue ELIMINADO.
+// La única lectura SELF de usuario es GET /me (getMe).
 
 // RETIRADO (BOLA/IDOR R1):
 // - getBuscarCheckers (GET /userChecks/:EmailAsignador): modelo DEPARTAMENTO retirado, SELECT * incl.

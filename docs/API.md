@@ -149,15 +149,16 @@ Body: `{ "refreshToken": "..." }` → **204** (idempotente). 400 `MISSING_REFRES
 
 | Método y ruta | Auth | Descripción |
 |---|---|---|
-| `GET /user/:Id` | — | Usuario por `IdLogin`. ⚠️ Devuelve el registro completo (incluye hash). 404 si no existe. |
-| `GET /userMatricula/:Matricula` | — | Usuario por matrícula. ⚠️ Registro completo. 404 si no existe. |
+| `GET /me` 🔒 | ✅ | **BOLA/IDOR R1**: perfil del usuario **autenticado** (identidad = token). **Proyección segura** (sin `Contraseña`/`TokenCFM`). Única lectura SELF de usuario. |
+| ~~`GET /user/:Id`~~ | — | **RETIRADO (BOLA/IDOR R1-C)** → 404 (con o sin Bearer). Usar `GET /me`. |
+| ~~`GET /userMatricula/:Matricula`~~ | — | **RETIRADO (BOLA/IDOR R1-C)** → 404. Usar `GET /me`. |
 | `PUT /me/password` 🔒 | ✅ | **Task 7.1**: cambio del usuario autenticado. Body `{ actual, nueva }`; identidad del token. 200 / 400 `MISSING_FIELDS`\|`WEAK_PASSWORD` / 401 / 403 `PASSWORD_MISMATCH`. |
 | ~~`PUT /password/:Correo`~~ | — | **RETIRADO (P0).** Eliminado (ruta + controlador + repo). El correo del cliente no autoriza cambios de contraseña → responde **404**. Usar `PUT /me/password` o el flujo de recuperación (`/password/forgot` → `/password/verify-otp` → `/password/reset`). |
-| `GET /buscarUser/:Nombre` | — | Búsqueda **exacta** por `Nombre` o `Apellidos`. Añade `ExisteEnPosition`. 404 → body `null`. |
-| `GET /userChecks/:EmailAsignador` | — | **Legado**: checkers `DEPARTAMENTO` por correo del asignador. Vivo a propósito durante la transición (ver §6). |
+| ~~`GET /buscarUser/:Nombre`~~ | — | **RETIRADO (BOLA/IDOR R1-A)** → 404 (SELECT lp.* incl. hash, enumeración anónima). Reemplazo seguro: `GET /buscarPersona/:Nombre` (🔒 `canGrant`, campos seguros + `ExisteEnPosition`). |
+| ~~`GET /userChecks/:EmailAsignador`~~ | — | **RETIRADO (BOLA/IDOR R1-A)** → 404 (modelo DEPARTAMENTO retirado; SELECT * incl. hash). |
 | `PUT /cambiarCargo/:Matricula` | — | Body `{ IdCargoDelegado }`. Asigna cargo delegado. |
 | `PUT /terminarCargo/:Matricula` | — | Limpia `IdCargoDelegado` y borra el registro de `Position` asociado. |
-| `GET /VerToken/:Matricula` | — | Tokens FCM: si la matrícula tiene delegado activo en `Position`, devuelve el/los del delegado; si no, el propio. `[{ TokenCFM }]`. |
+| ~~`GET /VerToken/:Matricula`~~ | — | **RETIRADO (BOLA/IDOR R1-A)** → 404. Exponía `TokenCFM` (token de push) de cualquiera. La resolución FCM (incluida la suplencia de `Position`) es **interna** server-side (`notificationService`). |
 | `PUT /TokenDispositivo/:Matricula` | ✅ | Body `{ TokenCFM }`. Registra token FCM. **Task 7.2**: matrícula del token (`:Matricula` ignorado). |
 | `PUT /Documentacion/:Matricula` | — | Body `{ StatusDoc }` (int). Marca expediente completo/incompleto. |
 

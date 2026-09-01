@@ -39,7 +39,7 @@ const hasDb = !!process.env.DB_SERVER;
 const d = hasDb ? describe : describe.skip;
 
 d('BOLA/IDOR R1-A (integración)', () => {
-    let pool, actor = {}, tokenActor, OTRO_IDLOGIN = 1; // 221068 real (solo para 403, sin lectura)
+    let pool, actor = {}, tokenActor, gestor = {}, tokenGestor;
     const PASS = 'LoginProbe123';
 
     beforeAll(async () => {
@@ -59,11 +59,23 @@ d('BOLA/IDOR R1-A (integración)', () => {
                     OUTPUT INSERTED.IdLogin AS IdLogin VALUES (@m,@p,@c,@n,@a,@t,@s,@f,@cel,1,@tok)`);
         actor = { IdLogin: r.recordset[0].IdLogin, Matricula: mat, Nombre: 'ACTOR', Apellidos: 'R1', TipoUser: 'ALUMNO', Dormitorio: null };
         tokenActor = generateAccessToken(actor);
+        // Gestor PRECEPTOR (para canGrant en /buscarPersona).
+        const gmat = 'RG' + String(Date.now()).slice(-7);
+        const gr = await pool.request()
+            .input('m', sql.VarChar(10), gmat).input('c', sql.VarChar(80), `${gmat}@test.local`)
+            .input('p', sql.VarChar(sql.MAX), hash).input('n', sql.VarChar(120), 'GESTOR').input('a', sql.VarChar(120), 'R1')
+            .input('t', sql.VarChar(20), 'PRECEPTOR').input('s', sql.VarChar(15), 'M')
+            .input('f', sql.DateTime, new Date('2000-01-01')).input('cel', sql.VarChar(15), '9610000000')
+            .query(`INSERT INTO UNIPASS.LoginUniPass (Matricula,Contraseña,Correo,Nombre,Apellidos,TipoUser,Sexo,FechaNacimiento,Celular,StatusActividad)
+                    OUTPUT INSERTED.IdLogin AS IdLogin VALUES (@m,@p,@c,@n,@a,@t,@s,@f,@cel,1)`);
+        gestor = { IdLogin: gr.recordset[0].IdLogin, Matricula: gmat, Nombre: 'GESTOR', Apellidos: 'R1', TipoUser: 'PRECEPTOR', Dormitorio: null };
+        tokenGestor = generateAccessToken(gestor);
     });
     afterAll(async () => {
-        if (actor.IdLogin) {
-            await pool.request().input('id', sql.Int, actor.IdLogin).query('DELETE FROM UNIPASS.RefreshToken WHERE IdLogin=@id'); // el test de login crea uno
-            await pool.request().input('id', sql.Int, actor.IdLogin).query('DELETE FROM UNIPASS.LoginUniPass WHERE IdLogin=@id');
+        for (const id of [actor.IdLogin, gestor.IdLogin]) {
+            if (!id) continue;
+            await pool.request().input('id', sql.Int, id).query('DELETE FROM UNIPASS.RefreshToken WHERE IdLogin=@id');
+            await pool.request().input('id', sql.Int, id).query('DELETE FROM UNIPASS.LoginUniPass WHERE IdLogin=@id');
         }
         await pool?.close();
     });
@@ -85,35 +97,37 @@ d('BOLA/IDOR R1-A (integración)', () => {
         expect(Object.keys(res.body).every((k) => SAFE_USER_FIELDS.includes(k))).toBe(true);
     });
     it('GET /me ignora manipulación de query/path (identidad = token)', async () => {
-        const res = await request(app).get(`/me?IdLogin=${OTRO_IDLOGIN}`).set('Authorization', `Bearer ${tokenActor}`).send({ IdLogin: OTRO_IDLOGIN });
+        const res = await request(app).get('/me?IdLogin=1').set('Authorization', `Bearer ${tokenActor}`).send({ IdLogin: 1 });
         expect(res.status).toBe(200);
         expect(res.body.IdLogin).toBe(actor.IdLogin); // no el manipulado
     });
 
-    // ---- legacy /user/:Id (SELF bridge) ----
-    it('GET /user/:Id anónimo -> 401', async () => {
-        expect((await request(app).get(`/user/${actor.IdLogin}`)).status).toBe(401);
+    // ---- legacy RETIRADOS (R1-C) -> 404 con o sin Bearer ----
+    it('GET /user/:Id retirado -> 404 (sin token y con Bearer)', async () => {
+        expect((await request(app).get(`/user/${actor.IdLogin}`)).status).toBe(404);
+        expect((await request(app).get(`/user/${actor.IdLogin}`).set('Authorization', `Bearer ${tokenActor}`)).status).toBe(404);
     });
-    it('GET /user/:Id de OTRO usuario -> 403 (no BOLA)', async () => {
-        const res = await request(app).get(`/user/${OTRO_IDLOGIN}`).set('Authorization', `Bearer ${tokenActor}`);
-        expect(res.status).toBe(403);
-        expect(res.body.code).toBe('FORBIDDEN_SELF_ONLY');
-    });
-    it('GET /user/:Id propio -> 200 sin hash/token', async () => {
-        const res = await request(app).get(`/user/${actor.IdLogin}`).set('Authorization', `Bearer ${tokenActor}`);
-        expect(res.status).toBe(200);
-        sinSecretos(res.body);
+    it('GET /userMatricula/:Matricula retirado -> 404 (sin token y con Bearer)', async () => {
+        expect((await request(app).get(`/userMatricula/${actor.Matricula}`)).status).toBe(404);
+        expect((await request(app).get(`/userMatricula/${actor.Matricula}`).set('Authorization', `Bearer ${tokenActor}`)).status).toBe(404);
     });
 
-    // ---- /userMatricula SELF-only ----
-    it('GET /userMatricula de OTRA matrícula -> 403', async () => {
-        const res = await request(app).get('/userMatricula/221068').set('Authorization', `Bearer ${tokenActor}`);
-        expect(res.status).toBe(403);
-    });
-    it('GET /userMatricula propia -> 200 sin hash/token', async () => {
-        const res = await request(app).get(`/userMatricula/${actor.Matricula}`).set('Authorization', `Bearer ${tokenActor}`);
+    // ---- /buscarPersona (reemplazo seguro, canGrant) ----
+    it('GET /buscarPersona: safe projection + ExisteEnPosition (delegate_user), sin hash/token/correo', async () => {
+        const res = await request(app).get(`/buscarPersona/${actor.Nombre}`).set('Authorization', `Bearer ${tokenGestor}`);
         expect(res.status).toBe(200);
-        sinSecretos(res.body);
+        const row = res.body.find((p) => p.IdLogin === actor.IdLogin);
+        expect(row).toBeTruthy();
+        // campos requeridos por delegate_user
+        for (const k of ['IdLogin', 'Matricula', 'Nombre', 'Apellidos', 'TipoUser', 'ExisteEnPosition']) {
+            expect(row).toHaveProperty(k);
+        }
+        // safe: sin secretos ni Correo
+        for (const r of res.body) { sinSecretos(r); expect(r).not.toHaveProperty('Correo'); }
+    });
+    it('GET /buscarPersona sin token -> 401; con rol no autorizado (ALUMNO) -> 403', async () => {
+        expect((await request(app).get(`/buscarPersona/${actor.Nombre}`)).status).toBe(401);
+        expect((await request(app).get(`/buscarPersona/${actor.Nombre}`).set('Authorization', `Bearer ${tokenActor}`)).status).toBe(403);
     });
 
     // ---- retirados -> 404 ----

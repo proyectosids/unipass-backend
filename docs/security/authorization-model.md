@@ -415,6 +415,33 @@ Flutter solo refresca
 Fuera de este cierre (tareas separadas, sin tocar): GET `checks*` anónimos, `GET /getPoints`, BOLA/IDOR,
 `PUT /checks/:id`, CheckerGrant, scopes, FCM, ADMIN/SUPERADMIN.
 
-# Fuera de alcance de esta tarea (no mezclar)
-Revisión documental (7.3), BOLA de lecturas — solo se referencian en la matriz endpoint→permiso
-([[permissions-matrix]]). (`/password/:Correo` legacy y `/permissionValorado` cliente: **ya retirados**.)
+# BOLA/IDOR R1 (usuarios/credenciales/tokens) = CLOSED
+
+Cierra la exposición **anónima** de datos de usuario (`LoginUniPass SELECT *` con `Contraseña`/hash y
+`TokenCFM`). Modelo final para lectura SELF de usuario:
+
+```text
+SELF (Flutter)
+   ↓ Bearer
+GET /me
+   ↓ req.user.id
+safe user projection (toSafeUser / findSafeUserById) — NUNCA Contraseña ni TokenCFM
+```
+
+- **`GET /me`** (verifyToken): única lectura SELF; identidad del token; proyección segura.
+- **RETIRADOS → 404:** `GET /user/:Id`, `GET /userMatricula/:Matricula` (R1-C); `GET /buscarUser/:Nombre`,
+  `GET /userChecks/:Email`, `GET /VerToken/:Matricula` (R1-A).
+- **`GET /buscarPersona/:Nombre`** (verifyToken + `canGrant`): reemplazo seguro de búsqueda; campos
+  seguros + `ExisteEnPosition`; sin `Contraseña`/`TokenCFM`/`Correo`.
+- **`TokenCFM`:** solo uso interno/registro del dispositivo propio (`PUT /TokenDispositivo`, resolución
+  FCM server-side vía `notificationService`/suplencia `Position`). Nunca serializado por HTTP.
+- **`Contraseña`/hash:** nunca serializada en ninguna respuesta (incluido `POST /login`).
+- **FCM alumno (R1-C §3):** al aprobar/rechazar un permiso, el backend envía el push al alumno
+  server-side (reemplazo del `_notifyStudent` que hacía Flutter con `/VerToken`), post-commit/best-effort,
+  resolviendo la matrícula desde `Permission.IdUser`. **Distinto** de
+  `FOLLOW_UP_FUNCTIONAL_AUTHORIZATION_PROGRESS_FCM` (push al siguiente autorizador, aún pendiente).
+- **Commits:** Backend R1-A `804ae47`, Frontend R1-B `17e9ca5`, Backend R1-C (este). E2E real = deployment gate.
+
+**Pendiente (fases posteriores, NO 7.4B/R1):** BOLA de lecturas de **Permission/Authorize**, **documentos**
+(7.3) y **checks reads (R2)** siguen abiertas — ver [[permissions-matrix]]. (`/password/:Correo` legacy y
+`/permissionValorado` cliente: **ya retirados**.)

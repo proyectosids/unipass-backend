@@ -90,26 +90,24 @@ Body `{ "refreshToken": "..." }` → **204** sin body (idempotente: si ya estaba
 | 400 | `{ "message": "El rol DEPARTAMENTO fue retirado...", "code": "DEPARTAMENTO_RETIRED" }` |
 | 400 | `{ "message": "Usuario ya registrado" }` |
 
-### GET /user/:Id · GET /userMatricula/:Matricula
+### GET /me 🔒 (BOLA/IDOR R1)
 
-Usuario por `IdLogin` / por matrícula. **200**: ⚠️ registro completo de `LoginUniPass`
-(incluye `Contraseña` hasheada y `TokenCFM` — pendiente de sanear). **404** `{ "message": "Dato no encontrado" }`.
+Perfil del usuario **autenticado** (identidad = token). **200**: proyección segura de `LoginUniPass`
+(`IdLogin, Matricula, Correo, Nombre, Apellidos, TipoUser, Sexo, FechaNacimiento, Celular,
+StatusActividad, Dormitorio, IdCargoDelegado, Documentacion`) — **nunca** `Contraseña` ni `TokenCFM`.
+**401** sin token. Única lectura SELF de usuario.
 
-### PUT /password/:Correo
+### ~~GET /user/:Id~~ · ~~GET /userMatricula/:Matricula~~ — RETIRADOS (BOLA/IDOR R1-C)
 
-Body `{ "NewPassword": "nuevo123" }` → **200** `{ "message": "Contraseña actualizado correctamente" }`.
-**404** si el correo no existe (o la cuenta es DEPARTAMENTO, excluida a propósito).
+**Eliminados** → **404** (con o sin Bearer). Antes devolvían `SELECT *` (incl. hash/TokenCFM), anónimos.
+La lectura SELF es ahora `GET /me`.
 
-### GET /buscarUser/:Nombre
+### ~~GET /buscarUser/:Nombre~~ · ~~GET /userChecks/:EmailAsignador~~ — RETIRADOS (BOLA/IDOR R1-A)
 
-Match **exacto** contra `Nombre` **o** `Apellidos` (no es LIKE; para búsqueda parcial usar
-`/buscarPersona`). **200**: array de registros ⚠️ completos + `"ExisteEnPosition": "Existe en Position" | "No existe en Position"`.
-**404** con body `null`.
-
-### GET /userChecks/:EmailAsignador — legado
-
-Cuentas `DEPARTAMENTO` asignadas por ese correo. Vivo solo durante la transición a CheckerGrant.
-**404** `{ "message": "No hay datos registrados" }`.
+**Eliminados** → **404**. `/buscarUser` (enumeración anónima con `SELECT lp.*`) se reemplaza por
+`GET /buscarPersona/:Nombre` (🔒 `verifyToken + canGrant`): LIKE parcial, solo activos, **campos
+seguros** `IdLogin, Matricula, Nombre, Apellidos, TipoUser` + `ExisteEnPosition` (para `delegate_user`);
+**sin** `Contraseña`/`TokenCFM`/`Correo`. `/userChecks` usaba el modelo `DEPARTAMENTO` (retirado).
 
 ### Cargo delegado y FCM
 
@@ -117,8 +115,8 @@ Cuentas `DEPARTAMENTO` asignadas por ese correo. Vivo solo durante la transició
 |---|---|---|
 | `PUT /cambiarCargo/:Matricula` | `{ "IdCargoDelegado": 7 }` | `{ "message": "Estado actualizado exitosamente" }` |
 | `PUT /terminarCargo/:Matricula` | — | `{ "message": "Estado actualizado y registro eliminado exitosamente" }` (limpia `IdCargoDelegado` **y** borra la fila de `Position`) |
-| `GET /VerToken/:Matricula` | — | `[ { "TokenCFM": "fcm_token..." } ]` — si la matrícula tiene delegado activo, devuelve el/los tokens del delegado; si no, el propio |
-| `PUT /TokenDispositivo/:Matricula` | `{ "TokenCFM": "fcm_token..." }` | `"Dato Actulizado"` (string) |
+| ~~`GET /VerToken/:Matricula`~~ | — | **RETIRADO (BOLA/IDOR R1-A)** → 404. Exponía `TokenCFM`; la resolución FCM (incl. suplencia `Position`) es interna server-side. |
+| `PUT /TokenDispositivo/:Matricula` 🔒 | `{ "TokenCFM": "fcm_token..." }` | Registra el token del **propio** dispositivo (matrícula = token). |
 | `PUT /Documentacion/:Matricula` | `{ "StatusDoc": 1 }` | `"Dato Actulizado"` (string) |
 
 Errores: 400 `{ message: "El registro no tiene un IdCargoDelegado válido" }` (terminarCargo), 404 `{ message: "Dato no encontrado" }`.

@@ -1,18 +1,15 @@
 import { Router } from "express";
 import { verifyToken } from '../Middleware/verifityToken.js';
-import { getUser, getMe, loginUser, putMePassword, BuscarUserMatricula, updateCargo, endCargo, registerTokenFCM, documentComplet, verifySessionToken, refreshTokenController, logoutUser } from "../controllers/user.controllers.js";
+import { getMe, loginUser, putMePassword, updateCargo, endCargo, registerTokenFCM, documentComplet, verifySessionToken, refreshTokenController, logoutUser } from "../controllers/user.controllers.js";
 
 const router = Router();
 
-// BOLA/IDOR R1: perfil del usuario AUTENTICADO (identidad = token; sin IdLogin del cliente). Destino
-// final del legacy /user/:Id. Respuesta con proyección segura (sin Contraseña ni TokenCFM).
+// BOLA/IDOR R1: perfil del usuario AUTENTICADO (identidad = token; sin IdLogin del cliente). ÚNICA
+// lectura SELF de usuario. Respuesta con proyección segura (sin Contraseña ni TokenCFM).
 router.get("/me", verifyToken, getMe);
 
-// LEGADO (BOLA/IDOR R1, puente): ahora requieren Bearer y son SOLO SELF (:Id/:Matricula == token) con
-// proyección segura. Se retiran tras migrar Flutter a /me (R1-C). No exponen hash/TokenCFM.
-router.get("/user/:Id", verifyToken, getUser);
-
-router.get("/userMatricula/:Matricula", verifyToken, BuscarUserMatricula);
+// RETIRADO (BOLA/IDOR R1-C) -> 404 (con o sin Bearer): GET /user/:Id y GET /userMatricula/:Matricula
+// (Frontend ya migró a /me, 0 consumidores). El identificador del cliente no selecciona usuario. Usar /me.
 
 //=========== LOGIN ===============
 

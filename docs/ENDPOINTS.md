@@ -19,13 +19,11 @@ Contrato OTP externo en [otp-service-contract.md](otp-service-contract.md).
 | POST | `/logout` | 🔒 | Revoca el refresh. Body `{ refreshToken }`. |
 | GET | `/verifyToken` | 🔒 | Valida sesión; devuelve `{ user, capabilities }`. |
 | POST | `/register` | — | Alta de usuario. Rechaza `TipoUser:'DEPARTAMENTO'` (400). |
-| GET | `/user/:Id` | — | Usuario por IdLogin. ⚠️ devuelve registro completo (hash incluido). |
-| GET | `/userMatricula/:Matricula` | — | Usuario por matrícula. ⚠️ registro completo. |
-| GET | `/buscarUser/:Nombre` | — | Búsqueda exacta por nombre/apellidos. |
-| GET | `/userChecks/:EmailAsignador` | — | Legado (modelo DEPARTAMENTO). |
+| GET | `/me` | 🔒 | **BOLA/IDOR R1**: perfil del usuario autenticado; proyección segura (sin hash/TokenCFM). Única lectura SELF. |
+| ~~GET~~ | ~~`/user/:Id`~~ · ~~`/userMatricula/:Matricula`~~ | — | **RETIRADOS (BOLA/IDOR R1-C)** → 404. Usar `/me`. |
+| ~~GET~~ | ~~`/buscarUser/:Nombre`~~ · ~~`/userChecks/:EmailAsignador`~~ · ~~`/VerToken/:Matricula`~~ | — | **RETIRADOS (BOLA/IDOR R1-A)** → 404. `/buscarPersona` reemplaza la búsqueda; FCM resuelto interno. |
 | PUT | `/cambiarCargo/:Matricula` | — | Asigna cargo delegado. Body `{ IdCargoDelegado }`. |
 | PUT | `/terminarCargo/:Matricula` | — | Termina cargo + borra Position. |
-| GET | `/VerToken/:Matricula` | — | Token FCM (resuelve suplencia). |
 | PUT | `/TokenDispositivo/:Matricula` | 🔒 | **Task 7.2**: matrícula del token (path ignorado). Body `{ TokenCFM }`. |
 | PUT | `/Documentacion/:Matricula` | — | Marca expediente. Body `{ StatusDoc }`. |
 

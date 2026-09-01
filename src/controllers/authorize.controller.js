@@ -12,6 +12,7 @@ import { findAlumnoMatriculaByPermission } from '../repositories/permission.repo
 import { findConfigValue } from '../repositories/config.repo.js';
 import { findPreceptorMatriculaByDormitorio, findCoordinadorActivo, findUserById } from '../repositories/user.repo.js';
 import { emitToUser, emitToEmpleado } from '../util/socketHelpers.js';
+import { sendToEmployee } from '../services/notificationService.js';
 
 // Task 7.4B (Commit A): mapeo de código de dominio -> HTTP para la resolución de eslabón.
 const HTTP_AUTORIZAR = {
@@ -182,6 +183,23 @@ export const definirAutorizacion = async (req, res) => {
                 await emitToEmpleado(io, null, nextEmpleado, 'new_authorization_assigned', {
                     idPermission, status: 'Pendiente', timestamp: new Date().toISOString()
                 });
+            }
+
+            // BOLA/IDOR R1-C: reemplazo server-side del push que hacía Flutter (_notifyStudent vía
+            // /VerToken, ya retirado). El alumno se resuelve desde Permission.IdUser (matriculaAlumno);
+            // el TokenCFM se resuelve INTERNAMENTE (nunca del cliente). Best-effort post-commit: un fallo
+            // de FCM NO afecta la transacción ni la respuesta. No duplica: no había push al alumno.
+            if (matriculaAlumno) {
+                const cuerpoPush = result.permDespues === 'Aprobada'
+                    ? 'Tu solicitud de salida fue aprobada.'
+                    : result.permDespues === 'Rechazada'
+                        ? 'Tu solicitud de salida fue rechazada.'
+                        : 'Tu solicitud de salida avanzó y sigue pendiente de autorización.';
+                try {
+                    await sendToEmployee({ matricula: String(matriculaAlumno), title: 'Actualización de tu salida', body: cuerpoPush });
+                } catch (pushErr) {
+                    console.error('[Notif] Push al alumno fallo (no afecta la operación):', pushErr.message);
+                }
             }
         } catch (socketError) {
             console.error('[Socket] Error en definirAutorizacion:', socketError.message);

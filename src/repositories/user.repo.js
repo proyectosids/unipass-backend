@@ -61,24 +61,29 @@ export const findUserByMatriculaOrCorreo = (value) =>
 // hash/token, enumeración anónima por nombre) fueron ELIMINADAS junto con sus endpoints. La búsqueda
 // de personas segura y protegida vive en searchAssignablePersonsByName (GET /buscarPersona, canGrant).
 
-// Busqueda de personas asignables como checador (pantalla de gestion).
+// Busqueda de personas asignables como checador / delegacion (pantalla de gestion).
 // LIKE parcial sobre nombre/apellidos; solo activos; sin DEPARTAMENTO (retirado).
-// SELECT explicito de campos seguros: NO expone Contraseña, TokenCFM ni Correo.
+// SELECT explicito de campos SEGUROS: NO expone Contraseña, TokenCFM ni Correo.
+// BOLA/IDOR R1-C: se agrega ExisteEnPosition (campo derivado seguro que delegate_user usa para
+// filtrar) reponiendo el que traia el retirado /buscarUser, sin ampliar a SELECT * ni exponer PII.
 export const searchAssignablePersonsByName = (q) =>
     withConnection(async (pool) => {
         const result = await pool
             .request()
             .input('q', sql.VarChar, q)
-            .query(`SELECT IdLogin, Matricula, Nombre, Apellidos, TipoUser
-                    FROM UNIPASS.LoginUniPass
-                    WHERE StatusActividad = 1
-                      AND TipoUser <> 'DEPARTAMENTO'
+            .query(`SELECT lp.IdLogin, lp.Matricula, lp.Nombre, lp.Apellidos, lp.TipoUser,
+                           CASE WHEN p.MatriculaEncargado IS NOT NULL THEN 'Existe en Position'
+                                ELSE 'No existe en Position' END AS ExisteEnPosition
+                    FROM UNIPASS.LoginUniPass AS lp
+                    LEFT JOIN UNIPASS.Position AS p ON lp.Matricula = p.Asignado
+                    WHERE lp.StatusActividad = 1
+                      AND lp.TipoUser <> 'DEPARTAMENTO'
                       AND (
-                          Nombre COLLATE Latin1_General_CI_AI LIKE '%' + @q + '%'
-                          OR Apellidos COLLATE Latin1_General_CI_AI LIKE '%' + @q + '%'
-                          OR (Nombre + ' ' + Apellidos) COLLATE Latin1_General_CI_AI LIKE '%' + @q + '%'
+                          lp.Nombre COLLATE Latin1_General_CI_AI LIKE '%' + @q + '%'
+                          OR lp.Apellidos COLLATE Latin1_General_CI_AI LIKE '%' + @q + '%'
+                          OR (lp.Nombre + ' ' + lp.Apellidos) COLLATE Latin1_General_CI_AI LIKE '%' + @q + '%'
                       )
-                    ORDER BY Nombre, Apellidos`);
+                    ORDER BY lp.Nombre, lp.Apellidos`);
         return result.recordset;
     });
 
