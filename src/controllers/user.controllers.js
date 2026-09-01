@@ -2,6 +2,7 @@
 // logout, verify), password, busquedas, cargo delegado, token FCM y documentacion.
 import { hashData, VerifyHashData } from '../util/hashData.js';
 import { validatePassword } from '../util/passwordPolicy.js';
+import { toSafeUser } from '../util/safeUser.js';
 import {
     generateAccessToken,
     generateRefreshToken,
@@ -12,9 +13,7 @@ import {
     findUserById,
     findUserByMatricula,
     findUserByMatriculaOrCorreo,
-    findCheckersByEmail,
-    findPersonaByNombreOApellidos,
-    findTokenFCMByMatricula,
+    findSafeUserById,
     updateUserPasswordById,
     updateDocumentacion,
     updateTokenFCM,
@@ -32,13 +31,33 @@ import {
 } from '../repositories/refreshToken.repo.js';
 import { findCapabilitiesByLogin } from '../repositories/checkerGrant.repo.js';
 
+// BOLA/IDOR R1: perfil del usuario AUTENTICADO. Identidad = req.user.id (token); no acepta IdLogin del
+// cliente. Respuesta con proyección segura (sin Contraseña ni TokenCFM). Destino final del legacy /user/:Id.
+export const getMe = async (req, res) => {
+    try {
+        const user = await findSafeUserById(req.user.id);
+        if (!user) {
+            return res.status(404).json({ message: 'Usuario no encontrado', code: 'USER_NOT_FOUND' });
+        }
+        return res.json(toSafeUser(user));
+    } catch (error) {
+        console.error('Error en GET /me:', error.message);
+        return res.status(500).json({ message: 'Error obteniendo el usuario', code: 'SERVER_ERROR' });
+    }
+};
+
+// BOLA/IDOR R1 (puente de contención, requiere verifyToken): solo SELF — :Id debe ser el IdLogin del
+// token. Responde proyección segura. Se migra a GET /me (R1-B) y se retira el legacy (R1-C).
 export const getUser = async (req, res) => {
     try {
-        const user = await findUserById(req.params.Id);
+        if (Number(req.params.Id) !== req.user.id) {
+            return res.status(403).json({ message: 'Solo puedes consultar tu propio usuario', code: 'FORBIDDEN_SELF_ONLY' });
+        }
+        const user = await findSafeUserById(req.user.id);
         if (!user) {
             return res.status(404).json({ message: 'Dato no encontrado' });
         }
-        return res.json(user);
+        return res.json(toSafeUser(user));
     } catch (error) {
         res.status(500).json({ error: error.message });
     }
@@ -133,7 +152,7 @@ export const loginUser = async (req, res) => {
             accessToken,
             refreshToken,
             token: accessToken,
-            user,
+            user: toSafeUser(user), // BOLA/IDOR R1: nunca serializar Contraseña/TokenCFM del registro
             capabilities
         });
     } catch (error) {
@@ -270,53 +289,30 @@ export const putMePassword = async (req, res) => {
 // Rutas soportadas: PUT /me/password (identidad = token) y el flujo de recuperación con resetToken
 // (/password/forgot -> /password/verify-otp -> /password/reset).
 
+// BOLA/IDOR R1 (puente de contención, requiere verifyToken): solo SELF — la matrícula debe ser la del
+// token. Responde proyección segura (sin hash/TokenCFM). Se migra a GET /me (R1-B) y se retira (R1-C).
 export const BuscarUserMatricula = async (req, res) => {
     try {
+        if (String(req.params.Matricula) !== String(req.user.matricula)) {
+            return res.status(403).json({ message: 'Solo puedes consultar tu propio usuario', code: 'FORBIDDEN_SELF_ONLY' });
+        }
         const user = await findUserByMatricula(req.params.Matricula);
         if (!user) {
             return res.status(404).json({ message: 'Dato no encontrado' });
         }
-        return res.json(user);
+        return res.json(toSafeUser(user));
     } catch (error) {
         res.status(500).json({ error: error.message });
     }
 };
 
-export const getBuscarCheckers = async (req, res) => {
-    try {
-        const checkers = await findCheckersByEmail(req.params.EmailAsignador);
-        if (checkers.length === 0) {
-            return res.status(404).json({ message: 'No hay datos registrados' });
-        }
-        return res.json(checkers);
-    } catch (error) {
-        res.status(500).json({ error: error.message });
-    }
-};
-
-export const buscarPersona = async (req, res) => {
-    try {
-        const personas = await findPersonaByNombreOApellidos(req.params.Nombre);
-        if (personas.length === 0) {
-            return res.status(404).json(null);
-        }
-        return res.json(personas);
-    } catch (error) {
-        res.status(500).json({ error: error.message });
-    }
-};
-
-export const SearchTokenFCM = async (req, res) => {
-    try {
-        const tokens = await findTokenFCMByMatricula(req.params.Matricula);
-        if (tokens.length === 0) {
-            return res.status(404).json({ message: 'Dato no encontrado' });
-        }
-        return res.json(tokens);
-    } catch (error) {
-        res.status(500).json({ error: error.message });
-    }
-};
+// RETIRADO (BOLA/IDOR R1):
+// - getBuscarCheckers (GET /userChecks/:EmailAsignador): modelo DEPARTAMENTO retirado, SELECT * incl.
+//   hash, anónimo. Sin consumidores. → 404. Búsqueda segura: GET /buscarPersona (canGrant).
+// - buscarPersona (GET /buscarUser/:Nombre): SELECT lp.* incl. hash/token, enumeración anónima por
+//   nombre. Sin consumidores. → 404. Reemplazo: GET /buscarPersona (canGrant, campos seguros).
+// - SearchTokenFCM (GET /VerToken/:Matricula): exponía TokenCFM (token de push) de cualquier matrícula.
+//   Sin consumidores HTTP; la resolución FCM es INTERNA (notificationService.findTokenFCMByMatricula). → 404.
 
 export const documentComplet = async (req, res) => {
     try {

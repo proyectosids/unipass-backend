@@ -3,12 +3,28 @@ import { withConnection } from '../database/connection.js';
 
 // === LoginUniPass: lecturas ===
 
+// Uso INTERNO (verificación de password, resolución de identidad del token, etc.): trae el registro
+// completo (incluye Contraseña/TokenCFM). NUNCA serializar su resultado directo a HTTP: usar toSafeUser
+// o findSafeUserById. (BOLA/IDOR R1.)
 export const findUserById = (id) =>
     withConnection(async (pool) => {
         const result = await pool
             .request()
             .input('Id', sql.Int, id)
             .query('SELECT * FROM UNIPASS.LoginUniPass WHERE IdLogin = @Id');
+        return result.recordset[0] || null;
+    });
+
+// BOLA/IDOR R1: proyección SEGURA por IdLogin (SELECT explícito de campos no sensibles). Para /me y
+// respuestas de perfil. NO incluye Contraseña ni TokenCFM (capa 1 de defensa; toSafeUser es la capa 2).
+export const findSafeUserById = (idLogin) =>
+    withConnection(async (pool) => {
+        const result = await pool
+            .request()
+            .input('Id', sql.Int, idLogin)
+            .query(`SELECT IdLogin, Matricula, Correo, Nombre, Apellidos, TipoUser, Sexo,
+                           FechaNacimiento, Celular, StatusActividad, Dormitorio, IdCargoDelegado, Documentacion
+                    FROM UNIPASS.LoginUniPass WHERE IdLogin = @Id`);
         return result.recordset[0] || null;
     });
 
@@ -40,30 +56,10 @@ export const findUserByMatriculaOrCorreo = (value) =>
         return result.recordset[0] || null;
     });
 
-export const findCheckersByEmail = (email) =>
-    withConnection(async (pool) => {
-        const result = await pool
-            .request()
-            .input('EmailEncargado', sql.VarChar, email)
-            .query(`SELECT * FROM UNIPASS.LoginUniPass WHERE TipoUser = 'DEPARTAMENTO' AND Correo = @EmailEncargado`);
-        return result.recordset;
-    });
-
-export const findPersonaByNombreOApellidos = (nombre) =>
-    withConnection(async (pool) => {
-        const result = await pool
-            .request()
-            .input('Nombre', sql.VarChar, nombre)
-            .query(`SELECT lp.*,
-                           CASE
-                               WHEN p.MatriculaEncargado IS NOT NULL THEN 'Existe en Position'
-                               ELSE 'No existe en Position'
-                           END AS ExisteEnPosition
-                    FROM UNIPASS.LoginUniPass AS lp
-                    LEFT JOIN UNIPASS.Position AS p ON lp.Matricula = p.Asignado
-                    WHERE (lp.Nombre = @Nombre OR lp.Apellidos = @Nombre)`);
-        return result.recordset;
-    });
+// RETIRADO (BOLA/IDOR R1): findCheckersByEmail (GET /userChecks, modelo DEPARTAMENTO retirado,
+// SELECT * incl. hash, anónimo) y findPersonaByNombreOApellidos (GET /buscarUser, SELECT lp.* incl.
+// hash/token, enumeración anónima por nombre) fueron ELIMINADAS junto con sus endpoints. La búsqueda
+// de personas segura y protegida vive en searchAssignablePersonsByName (GET /buscarPersona, canGrant).
 
 // Busqueda de personas asignables como checador (pantalla de gestion).
 // LIKE parcial sobre nombre/apellidos; solo activos; sin DEPARTAMENTO (retirado).

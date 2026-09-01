@@ -1,13 +1,18 @@
 import { Router } from "express";
 import { verifyToken } from '../Middleware/verifityToken.js';
-import { getUser, loginUser, putMePassword, BuscarUserMatricula, getBuscarCheckers, buscarPersona, updateCargo, endCargo, registerTokenFCM, SearchTokenFCM, documentComplet, verifySessionToken, refreshTokenController, logoutUser } from "../controllers/user.controllers.js";
+import { getUser, getMe, loginUser, putMePassword, BuscarUserMatricula, updateCargo, endCargo, registerTokenFCM, documentComplet, verifySessionToken, refreshTokenController, logoutUser } from "../controllers/user.controllers.js";
 
 const router = Router();
 
-// Consulta de perfil (por IdLogin / por matricula)
-router.get("/user/:Id", getUser);
+// BOLA/IDOR R1: perfil del usuario AUTENTICADO (identidad = token; sin IdLogin del cliente). Destino
+// final del legacy /user/:Id. Respuesta con proyección segura (sin Contraseña ni TokenCFM).
+router.get("/me", verifyToken, getMe);
 
-router.get("/userMatricula/:Matricula", BuscarUserMatricula);
+// LEGADO (BOLA/IDOR R1, puente): ahora requieren Bearer y son SOLO SELF (:Id/:Matricula == token) con
+// proyección segura. Se retiran tras migrar Flutter a /me (R1-C). No exponen hash/TokenCFM.
+router.get("/user/:Id", verifyToken, getUser);
+
+router.get("/userMatricula/:Matricula", verifyToken, BuscarUserMatricula);
 
 //=========== LOGIN ===============
 
@@ -29,19 +34,16 @@ router.put("/me/password", verifyToken, putMePassword);
 // POST /password/forgot -> /password/verify-otp -> /password/reset (resetToken). Ver
 // docs/security/authorization-model.md. Sin ruta = 404 estándar de Express.
 
-// LEGADO (modelo DEPARTAMENTO retirado): vivo solo durante la transicion a CheckerGrant
-router.get("/userChecks/:EmailAsignador", getBuscarCheckers);
-
-// Busqueda EXACTA por nombre o apellidos (la parcial es /buscarPersona en checkerGrant.routes)
-router.get("/buscarUser/:Nombre", buscarPersona);
+// RETIRADO (BOLA/IDOR R1) -> 404:
+// - GET /userChecks/:EmailAsignador (modelo DEPARTAMENTO retirado; SELECT * incl. hash; anónimo).
+// - GET /buscarUser/:Nombre (SELECT lp.* incl. hash/token; enumeración anónima). Reemplazo seguro:
+//   GET /buscarPersona (checkerGrant.routes, verifyToken + canGrant, campos seguros).
+// - GET /VerToken/:Matricula (exponía TokenCFM de cualquiera). La resolución FCM es interna server-side.
 
 // Cargos delegados (suplencias, ver position.routes)
 router.put("/cambiarCargo/:Matricula", updateCargo);
 
 router.put("/terminarCargo/:Matricula", endCargo);
-
-// Token FCM del dispositivo (VerToken resuelve la suplencia activa)
-router.get("/VerToken/:Matricula", SearchTokenFCM);
 
 // Task 7.2: identidad del token (matrícula del path ignorada). Un 403 aquí no debe bloquear login.
 router.put("/TokenDispositivo/:Matricula", verifyToken, registerTokenFCM);

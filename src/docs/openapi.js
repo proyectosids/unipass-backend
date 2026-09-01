@@ -13,13 +13,12 @@ const E = [
   ['post', '/logout', 'Sesión', 'Cerrar sesión', { auth: 'bearer', body: { refreshToken: '<refresh>' } }],
   ['get', '/verifyToken', 'Sesión', 'Validar sesión', { auth: 'bearer' }],
   ['post', '/register', 'Sesión', 'Alta de usuario', { body: { Matricula: '230001', 'Contraseña': 'abc12345', Correo: 'a@ulv.edu.mx', Nombre: 'Ana', Apellidos: 'Pérez', TipoUser: 'ALUMNO', Sexo: 'F', FechaNacimiento: '2004-05-12', Celular: '9611234567', Dormitorio: 1 } }],
-  ['get', '/user/{Id}', 'Usuarios', 'Usuario por IdLogin'],
-  ['get', '/userMatricula/{Matricula}', 'Usuarios', 'Usuario por matrícula'],
-  ['get', '/buscarUser/{Nombre}', 'Usuarios', 'Búsqueda exacta por nombre/apellidos'],
-  ['get', '/userChecks/{EmailAsignador}', 'Usuarios', 'Checkers por correo (legado)'],
+  ['get', '/me', 'Usuarios', 'Perfil del usuario autenticado (proyección segura, sin hash/TokenCFM)', { auth: 'bearer' }],
+  ['get', '/user/{Id}', 'Usuarios', 'BOLA/IDOR R1: SOLO SELF (:Id == token); proyección segura. Migra a /me', { auth: 'bearer' }],
+  ['get', '/userMatricula/{Matricula}', 'Usuarios', 'BOLA/IDOR R1: SOLO SELF (:Matricula == token); proyección segura. Migra a /me', { auth: 'bearer' }],
+  // RETIRADO (BOLA/IDOR R1) → 404: GET /buscarUser (usar /buscarPersona), /userChecks (legado), /VerToken (TokenCFM interno).
   ['put', '/cambiarCargo/{Matricula}', 'Usuarios', 'Asignar cargo delegado', { body: { IdCargoDelegado: 7 } }],
   ['put', '/terminarCargo/{Matricula}', 'Usuarios', 'Terminar cargo + borrar Position'],
-  ['get', '/VerToken/{Matricula}', 'Usuarios', 'Token FCM (resuelve suplencia)'],
   ['put', '/TokenDispositivo/{Matricula}', 'Usuarios', 'Registrar token FCM (Task 7.2: matrícula del token)', { auth: 'bearer', body: { TokenCFM: 'fcm_token' } }],
   ['put', '/Documentacion/{Matricula}', 'Usuarios', 'Marcar expediente', { body: { StatusDoc: 1 } }],
   // --- Contraseña ---
