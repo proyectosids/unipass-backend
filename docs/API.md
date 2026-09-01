@@ -315,10 +315,14 @@ Subida con Multer a `public/uploads/` (nombre = timestamp + extensión). Tipos p
 | `POST /doctosMul` 🔒 | **Task 7.2**: `IdLogin` = token (body ignorado); `verifyToken` antes de multer. `multipart/form-data`: campo **`Archivo`** + `IdDocumento`. Crea documento `StatusDoctos: 'Adjunto'`. Rollback de archivo si la BD falla. 401 sin token. |
 | `PUT /doctosMul/updateProfile` 🔒 | Igual pero **reemplaza** el archivo. **Task 7.2**: opera sobre el doc del token (`IdLogin` del body ignorado). |
 | `DELETE /doctosMul/:Id` 🔒 | Borra doc **propio**. **Task 7.2**: `IdLogin` = token (`:Id` ignorado), body `{ IdDocumento }`. 401 sin token. |
-| `GET /doctosProfile/:id?IdDocumento=` | Un documento específico del usuario (p. ej. foto de perfil). |
-| `GET /doctos/:Id` | Todos los documentos del usuario `:Id` (IdLogin). 404 si no hay. |
-| `GET /getExpediente/:IdDormi` | Expedientes de los alumnos de un dormitorio (revisión del preceptor). |
-| `GET /getArchivos/:Dormitorio/:Nombre?/:Apellidos?/:Matricula?` | Archivos filtrados; solo `Dormitorio` es obligatorio. |
+| `GET /me/documents` 🔒 | **7.3 D2-A**: documentos del **actor** (SELF, `req.user.id`). Allowlist (sin `Contraseña`/`TokenCFM`). |
+| `GET /documents/review/students` 🔒 | **7.3 D2-A**: alumnos del **dorm del PRECEPTOR** (resuelto server-side; **sin `dorm=5`**). Solo `TipoUser='PRECEPTOR'` (403 `FORBIDDEN_DOCUMENT_REVIEWER`). Respuesta mínima `{ IdLogin, Nombre, Apellidos, Matricula }`. |
+| `GET /documents/review/students/:idLogin/documents` 🔒 | **7.3 D2-A**: documentos de un alumno de **SU dorm** (PRECEPTOR). Target por **IdLogin**; no-ALUMNO → 404; otro dorm → 403 `FORBIDDEN_DOCUMENT_SCOPE`. |
+| `GET /users/:idLogin/profile-photo` 🔒 | **7.3 D2-A**: foto de perfil (`IdDocumento=6` **forzado**). Política: **SELF** / **PRECEPTOR** mismo dorm / **CHECKER** con grant vigente (`CheckerGrant` Dormitorio o Caseta). Sin capability nueva; scope nunca del cliente. |
+| `GET /doctosProfile/:id?IdDocumento=6` 🔒 | **7.3 D2-A (bridge, DEPRECATED — REMOVE D2-C)**: solo foto (`IdDocumento=6`; otro/ausente → 403). Misma política que `/users/:idLogin/profile-photo`. |
+| `GET /doctos/:Id` 🔒 | **7.3 D2-A (bridge, DEPRECATED — REMOVE D2-C)**: **SELF-only** (`:Id` debe ser el token, si no 403 `FORBIDDEN_OWNERSHIP`). 404 si no hay docs. |
+| `GET /getExpediente/:IdDormi` 🔒 | **7.3 D2-A (bridge, DEPRECATED — REMOVE D2-C)**: PRECEPTOR; dorm **forzado** al del token; `:IdDormi` debe coincidir (si no 403 `FORBIDDEN_DOCUMENT_SCOPE`). **Sin `dorm=5`**. |
+| `GET /getArchivos/:Dormitorio/:Nombre?/:Apellidos?/:Matricula?` 🔒 | **7.3 D2-A (bridge, DEPRECATED — REMOVE D2-C)**: PRECEPTOR; dorm **forzado** al del token; `:Dormitorio` debe coincidir (si no 403). Nombre/Apellidos/Matrícula = filtro. |
 | ~~`PUT /statusRevision/:Id`~~ | **RETIRADO (7.3 D1-A)** → 404 (aprobación anónima). No hay operación pública de aprobar. |
 | `PUT /documents/:idDoctos/reject` 🔒 | **7.3 D1-A (ÚNICO contrato de rechazo)**: Bearer; actor = token; **solo PRECEPTOR** (403 `FORBIDDEN_DOCUMENT_REVIEWER`); **scope** dorm preceptor==alumno (403 `FORBIDDEN_DOCUMENT_SCOPE`); estados `Pendiente→Rechazado` (409); `404`. Body `{ motivo, comentario? }`. `RechazadoPor`=token; AuditLog; socket+FCM post-commit. |
 | ~~`PUT /doctosMul/reject/:Id`~~ | — | **RETIRADO (7.3 D1-C2)** → 404. Usar `PUT /documents/:idDoctos/reject`. |
@@ -371,8 +375,13 @@ se limpia `TokenCFM` del usuario automáticamente. Sin `PUSH_API_URL`, el push s
    registro completo de `LoginUniPass` (hash de contraseña incluido). Los listados de checks y
    `/buscarPersona` ya fueron saneados; estos tres siguen pendientes.
 3. `POST /permission` resta 6 h fijas a las fechas (no maneja DST ni otras zonas).
-4. `GET /getExpediente/:IdDormi` responde `580` (código inexistente; typo de 500) en error.
+4. ~~`GET /getExpediente/:IdDormi` responde `580`~~ **CORREGIDO (7.3 D2-A)**: ahora `500` con `{ code }`.
 5. `db.sql` está desactualizado respecto a la BD real (`LoginUniPass` es la fuente de verdad).
+6. **`DIRECT_FILE_ACCESS_BYPASS` (ABIERTO, bloquea `Task 7.3 CLOSED`)**: `app.js:31`
+   `express.static('public')` sirve `public/uploads/*` **sin autenticación**. Proteger los `GET`
+   de la API (D2-A) **no** protege el binario: conocido el nombre de archivo (`Doctos.Archivo`),
+   se descarga sin token. Propuesta: endpoint autenticado `GET /files/:id` con la política documental,
+   o almacenamiento privado con URL firmada. Ver `docs/security/authorization-model.md` (§ D2-A).
 6. CORS totalmente abierto y body limit de 50 MB global.
 7. `GET /userChecks/:EmailAsignador` es legado del modelo DEPARTAMENTO; se retirará al terminar la
    migración del cliente (fase 2b: borrado de cuentas 2035/2063, pendiente).

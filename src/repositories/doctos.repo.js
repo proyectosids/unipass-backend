@@ -220,6 +220,28 @@ export const deleteDocumentByTypeAndRecalcTx = ({ idLogin, idDocumento }) =>
         }
     });
 
+// Task 7.3 D2-A: alumnos revisables de un dormitorio (para el preceptor de ESE dorm). Allowlist mínima
+// (IdLogin para identificar el recurso en la siguiente lectura; NO nombre como identificador). Sin dorm=5.
+export const findReviewStudentsByDorm = (dormitorio) =>
+    withConnection(async (pool) => {
+        const result = await pool.request()
+            .input('Dorm', sql.Int, dormitorio)
+            .query(`SELECT IdLogin, Nombre, Apellidos, Matricula
+                    FROM UNIPASS.LoginUniPass
+                    WHERE TipoUser = 'ALUMNO' AND Dormitorio = @Dorm
+                    ORDER BY Nombre, Apellidos`);
+        return result.recordset;
+    });
+
+// Foto de perfil (IdDocumento=6) de un usuario. Allowlist: solo IdDoctos + Archivo (ruta). null si no hay.
+export const findProfilePhoto = (idLogin) =>
+    withConnection(async (pool) => {
+        const result = await pool.request()
+            .input('id', sql.Int, idLogin)
+            .query("SELECT IdDoctos, Archivo FROM UNIPASS.Doctos WHERE IdLogin = @id AND IdDocumento = 6");
+        return result.recordset[0] || null;
+    });
+
 export const findExpedientesByDormitorio = (idDormitorio) =>
     withConnection(async (pool) => {
         const result = await pool

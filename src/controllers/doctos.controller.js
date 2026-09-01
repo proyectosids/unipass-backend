@@ -12,9 +12,12 @@ import {
     findExpedientesByDormitorio,
     findArchivosFiltered,
     rejectDocumentTx,
-    findRejectNotificationContext
+    findRejectNotificationContext,
+    findReviewStudentsByDorm,
+    findProfilePhoto
 } from '../repositories/doctos.repo.js';
 import { findUserById } from '../repositories/user.repo.js';
+import { findActiveGrantByTipo } from '../repositories/checkerGrant.repo.js';
 import { deleteUploadedFile } from '../util/fileStorage.js';
 import { emitToUser } from '../util/socketHelpers.js';
 import { notifyDocumentRejection } from '../util/notifications.js';
@@ -22,30 +25,99 @@ import { notifyDocumentRejection } from '../util/notifications.js';
 // Task 7.3 D1-A: el revisor documental normal es ÚNICAMENTE TipoUser='PRECEPTOR' (decisión fijada:
 // EMPLEADO/VIGILANCIA/ADMINISTRATIVO NO se autorizan por defecto; la permisividad legacy no es política).
 
-export const getProfile = async (req, res) => {
-    try {
-        const docto = await findDocumentByLoginAndType(req.params.id, req.query.IdDocumento);
-        if (!docto) {
-            return res.status(404).json({ message: 'Archivo no encontrado' });
-        }
-        return res.json(docto);
-    } catch (error) {
-        console.error('Error en el servidor:', error);
-        res.status(500).send(error.message);
+// ===== Task 7.3 D2-A: lecturas documentales server-authoritative (BOLA/IDOR) =====
+
+// Política de FOTO DE PERFIL (IdDocumento=6): SELF; PRECEPTOR del mismo dormitorio; o CHECKER con grant
+// vigente que cubra el dorm del target (Dormitorio del dorm, o Caseta global). Nunca global por TipoUser.
+const puedeVerFotoPerfil = async (req, targetIdLogin) => {
+    if (Number(targetIdLogin) === Number(req.user.id)) return true; // SELF
+    const target = await findUserById(targetIdLogin);
+    if (!target || target.TipoUser !== 'ALUMNO') return false; // solo fotos de alumnos son revisables
+    const actor = await findUserById(req.user.id);
+    if (!actor) return false;
+    if (actor.TipoUser === 'PRECEPTOR') {
+        return actor.Dormitorio != null && Number(actor.Dormitorio) === Number(target.Dormitorio);
     }
+    // CHECKER: grant vigente Dormitorio del dorm del target, o Caseta (global). Nunca scope del cliente.
+    const gDorm = target.Dormitorio != null ? await findActiveGrantByTipo(req.user.id, 'Dormitorio', target.Dormitorio) : null;
+    if (gDorm && gDorm.Capability === 'CHECKER') return true;
+    const gCaseta = await findActiveGrantByTipo(req.user.id, 'Caseta');
+    if (gCaseta && gCaseta.Capability === 'CHECKER') return true;
+    return false;
 };
 
+const servirFotoPerfil = async (res, targetId) => {
+    const photo = await findProfilePhoto(targetId);
+    if (!photo) return res.status(404).json({ message: 'Foto no encontrada', code: 'DOCUMENT_NOT_FOUND' });
+    return res.json({ IdDoctos: photo.IdDoctos, IdDocumento: 6, Archivo: photo.Archivo });
+};
+
+// GET /me/documents (Bearer): SOLO documentos del actor autenticado. findDocumentsByLogin ya es allowlist.
+export const getMyDocuments = async (req, res) => {
+    try {
+        return res.json(await findDocumentsByLogin(req.user.id));
+    } catch (error) { console.error('Error en /me/documents:', error); res.status(500).json({ message: 'Error', code: 'SERVER_ERROR' }); }
+};
+
+// GET /documents/review/students (Bearer PRECEPTOR): alumnos de SU dormitorio (resuelto server-side).
+export const getReviewStudents = async (req, res) => {
+    try {
+        const actor = await findUserById(req.user.id);
+        if (!actor) return res.status(404).json({ message: 'Usuario no encontrado', code: 'USER_NOT_FOUND' });
+        if (actor.TipoUser !== 'PRECEPTOR') return res.status(403).json({ message: 'Solo un preceptor puede revisar', code: 'FORBIDDEN_DOCUMENT_REVIEWER' });
+        if (actor.Dormitorio == null) return res.status(409).json({ message: 'Preceptor sin dormitorio', code: 'DOCUMENT_REQUIREMENTS_UNRESOLVED' });
+        return res.json(await findReviewStudentsByDorm(actor.Dormitorio));
+    } catch (error) { console.error('Error en review/students:', error); res.status(500).json({ message: 'Error', code: 'SERVER_ERROR' }); }
+};
+
+// GET /documents/review/students/:idLogin/documents (Bearer PRECEPTOR): documentos de un alumno de SU dorm.
+export const getReviewStudentDocuments = async (req, res) => {
+    try {
+        const actor = await findUserById(req.user.id);
+        if (!actor) return res.status(404).json({ message: 'Usuario no encontrado', code: 'USER_NOT_FOUND' });
+        if (actor.TipoUser !== 'PRECEPTOR') return res.status(403).json({ message: 'Solo un preceptor puede revisar', code: 'FORBIDDEN_DOCUMENT_REVIEWER' });
+        const target = await findUserById(Number(req.params.idLogin));
+        if (!target || target.TipoUser !== 'ALUMNO') return res.status(404).json({ message: 'Alumno no encontrado', code: 'DOCUMENT_NOT_FOUND' });
+        if (actor.Dormitorio == null || Number(actor.Dormitorio) !== Number(target.Dormitorio)) {
+            return res.status(403).json({ message: 'Fuera de tu dormitorio', code: 'FORBIDDEN_DOCUMENT_SCOPE' });
+        }
+        return res.json(await findDocumentsByLogin(target.IdLogin));
+    } catch (error) { console.error('Error en review/students/:id/documents:', error); res.status(500).json({ message: 'Error', code: 'SERVER_ERROR' }); }
+};
+
+// GET /users/:idLogin/profile-photo (Bearer): foto de perfil (IdDocumento=6) según política SELF/PRECEPTOR/CHECKER.
+export const getProfilePhoto = async (req, res) => {
+    try {
+        const targetId = Number(req.params.idLogin);
+        if (!Number.isInteger(targetId) || targetId <= 0) return res.status(400).json({ message: 'idLogin invalido', code: 'MISSING_FIELDS' });
+        if (!(await puedeVerFotoPerfil(req, targetId))) return res.status(403).json({ message: 'No autorizado para ver esta foto', code: 'FORBIDDEN_DOCUMENT_SCOPE' });
+        return servirFotoPerfil(res, targetId);
+    } catch (error) { console.error('Error en getProfilePhoto:', error); res.status(500).json({ message: 'Error', code: 'SERVER_ERROR' }); }
+};
+
+// ===== Bridges legacy CONTENIDOS (DEPRECATED — REMOVE D2-C) =====
+
+// GET /doctosProfile/:id?IdDocumento=6 — bridge de foto de perfil. Solo IdDocumento=6; misma política.
+// No puede usarse como lector genérico (otro IdDocumento -> 403).
+export const getProfile = async (req, res) => {
+    try {
+        if (Number(req.query.IdDocumento) !== 6) return res.status(403).json({ message: 'Este endpoint solo sirve la foto de perfil (IdDocumento=6)', code: 'FORBIDDEN_DOCUMENT_SCOPE' });
+        const targetId = Number(req.params.id);
+        if (!(await puedeVerFotoPerfil(req, targetId))) return res.status(403).json({ message: 'No autorizado para ver esta foto', code: 'FORBIDDEN_DOCUMENT_SCOPE' });
+        return servirFotoPerfil(res, targetId);
+    } catch (error) { console.error('Error en getProfile (bridge):', error); res.status(500).json({ message: 'Error', code: 'SERVER_ERROR' }); }
+};
+
+// GET /doctos/:Id — bridge SELF: :Id debe ser el IdLogin del token.
 export const getDocumentsByUser = async (req, res) => {
     try {
-        const documents = await findDocumentsByLogin(req.params.Id);
-        if (documents.length === 0) {
-            return res.status(404).json({ message: 'No se encontraron archivos para el usuario' });
+        if (Number(req.params.Id) !== Number(req.user.id)) {
+            return res.status(403).json({ message: 'Solo puedes ver tus documentos', code: 'FORBIDDEN_OWNERSHIP' });
         }
+        const documents = await findDocumentsByLogin(req.user.id);
+        if (documents.length === 0) return res.status(404).json({ message: 'No se encontraron archivos', code: 'DOC_NOT_FOUND' });
         return res.json(documents);
-    } catch (error) {
-        console.error('Error en el servidor:', error);
-        res.status(500).send(error.message);
-    }
+    } catch (error) { console.error('Error en /doctos/:Id (bridge):', error); res.status(500).json({ message: 'Error', code: 'SERVER_ERROR' }); }
 };
 
 export const saveDocument = async (req, res) => {
@@ -180,41 +252,42 @@ export const deleteFileDoc = async (req, res) => {
     }
 };
 
+// GET /getExpediente/:IdDormi — bridge CONTENIDO (DEPRECATED — REMOVE D2-C).
+// PRECEPTOR only; dorm resuelto server-side; :IdDormi debe coincidir con el dorm del actor (sin dorm=5).
 export const getExpedientesAlumnos = async (req, res) => {
     try {
-        const expedientes = await findExpedientesByDormitorio(req.params.IdDormi);
-        if (expedientes.length === 0) {
-            return res.status(404).json({ message: 'No se encontraron experientes' });
+        const actor = await findUserById(req.user.id);
+        if (!actor) return res.status(404).json({ message: 'Usuario no encontrado', code: 'USER_NOT_FOUND' });
+        if (actor.TipoUser !== 'PRECEPTOR') return res.status(403).json({ message: 'Solo un preceptor puede revisar', code: 'FORBIDDEN_DOCUMENT_REVIEWER' });
+        if (actor.Dormitorio == null || Number(req.params.IdDormi) !== Number(actor.Dormitorio)) {
+            return res.status(403).json({ message: 'Fuera de tu dormitorio', code: 'FORBIDDEN_DOCUMENT_SCOPE' });
         }
+        const expedientes = await findExpedientesByDormitorio(actor.Dormitorio);
+        if (expedientes.length === 0) return res.status(404).json({ message: 'No se encontraron expedientes', code: 'DOC_NOT_FOUND' });
         return res.json(expedientes);
-    } catch (error) {
-        console.error('Error en el servidor:', error);
-        res.status(580).send(error.message);
-    }
+    } catch (error) { console.error('Error en getExpedientesAlumnos (bridge):', error); res.status(500).json({ message: 'Error', code: 'SERVER_ERROR' }); }
 };
 
+// GET /getArchivos/:Dormitorio/... — bridge CONTENIDO (DEPRECATED — REMOVE D2-C).
+// PRECEPTOR only; el filtro de dormitorio se FUERZA al dorm del actor (el :Dormitorio del path se ignora
+// para autorización y se valida que coincida; sin dorm=5). Nombre/Apellidos/Matricula siguen como filtro.
 export const getArchivosAlumno = async (req, res) => {
     try {
-        const { Dormitorio, Nombre, Apellidos, Matricula } = req.params;
-        if (!Dormitorio) {
-            return res.status(400).json({ message: 'El parámetro Dormitorio es obligatorio' });
+        const actor = await findUserById(req.user.id);
+        if (!actor) return res.status(404).json({ message: 'Usuario no encontrado', code: 'USER_NOT_FOUND' });
+        if (actor.TipoUser !== 'PRECEPTOR') return res.status(403).json({ message: 'Solo un preceptor puede revisar', code: 'FORBIDDEN_DOCUMENT_REVIEWER' });
+        if (actor.Dormitorio == null || Number(req.params.Dormitorio) !== Number(actor.Dormitorio)) {
+            return res.status(403).json({ message: 'Fuera de tu dormitorio', code: 'FORBIDDEN_DOCUMENT_SCOPE' });
         }
-
         const archivos = await findArchivosFiltered({
-            dormitorio: Dormitorio,
-            nombre: Nombre,
-            apellidos: Apellidos,
-            matricula: Matricula
+            dormitorio: actor.Dormitorio,
+            nombre: req.params.Nombre,
+            apellidos: req.params.Apellidos,
+            matricula: req.params.Matricula
         });
-
-        if (archivos.length === 0) {
-            return res.status(404).json({ message: 'No se encontraron expedientes para el alumno especificado' });
-        }
+        if (archivos.length === 0) return res.status(404).json({ message: 'No se encontraron expedientes', code: 'DOC_NOT_FOUND' });
         return res.json(archivos);
-    } catch (error) {
-        console.error('Error en el servidor:', error);
-        res.status(500).send(error.message);
-    }
+    } catch (error) { console.error('Error en getArchivosAlumno (bridge):', error); res.status(500).json({ message: 'Error', code: 'SERVER_ERROR' }); }
 };
 
 // RETIRADO (Task 7.3 D1-A): aprobarDocumento / PUT /statusRevision/:Id fue ELIMINADO (0 consumidores

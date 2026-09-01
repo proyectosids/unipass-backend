@@ -498,12 +498,19 @@ Mismos fields que el POST. Reemplaza el archivo (borra el viejo del disco), rese
 
 ### Consulta
 
+> **Task 7.3 D2-A**: todas estas lecturas exigen **Bearer** y son server-authoritative (ownership/scope).
+> Los cuatro `GET /doctos*`/`getExpediente`/`getArchivos` son **bridges DEPRECATED (REMOVE D2-C)**.
+
 | Endpoint | Respuesta 200 |
 |---|---|
-| `GET /doctosProfile/:id?IdDocumento=1` | `{ "Archivo": "/uploads/....png" }` (solo la ruta; se usa para foto de perfil) |
-| `GET /doctos/:Id` | Array por documento: `IdDoctos, IdLogin, IdDocumento, Archivo, StatusDoctos, StatusRevision, MotivoRechazo, ComentarioRechazo, FechaRechazo, TipoDocumento, RechazadoPor` (nombre completo del preceptor) |
-| `GET /getExpediente/:IdDormi` | `[ { "Matricula", "Nombre", "Apellidos" } ]` — alumnos con expediente del dormitorio (`5` = todos los dormitorios 1–4). ⚠️ error responde HTTP `580` (typo de 500) |
-| `GET /getArchivos/:Dormitorio/:Nombre?/:Apellidos?/:Matricula?` | Archivos del alumno. Con `Dormitorio=5` filtra **solo** por `Matricula`; con dormitorio real filtra por nombre/apellidos exactos. ⚠️ SELECT * |
+| `GET /me/documents` 🔒 | **(NUEVO)** SELF. Array allowlist: `IdDoctos, IdLogin, IdDocumento, Archivo, StatusDoctos, StatusRevision, MotivoRechazo, ComentarioRechazo, FechaRechazo, TipoDocumento, RechazadoPor`. Sin `Contraseña`/`TokenCFM`. |
+| `GET /documents/review/students` 🔒 | **(NUEVO)** PRECEPTOR. `[ { IdLogin, Nombre, Apellidos, Matricula } ]` — alumnos de **su** dorm (server-side; sin `dorm=5`). |
+| `GET /documents/review/students/:idLogin/documents` 🔒 | **(NUEVO)** PRECEPTOR. Mismo array que `/me/documents` para un alumno de **su** dorm (por `IdLogin`). |
+| `GET /users/:idLogin/profile-photo` 🔒 | **(NUEVO)** `{ IdDoctos, IdDocumento: 6, Archivo }`. Política SELF/PRECEPTOR(mismo dorm)/CHECKER(grant). `IdDocumento=6` forzado. |
+| `GET /doctosProfile/:id?IdDocumento=6` 🔒 | **(bridge foto)** `{ IdDoctos, IdDocumento: 6, Archivo }`. Solo `IdDocumento=6` (otro/ausente → 403). Misma política que profile-photo. |
+| `GET /doctos/:Id` 🔒 | **(bridge SELF)** `:Id` debe ser el token (si no 403 `FORBIDDEN_OWNERSHIP`). Mismo array que `/me/documents`. |
+| `GET /getExpediente/:IdDormi` 🔒 | **(bridge)** PRECEPTOR; dorm forzado al del token. `[ { Matricula, Nombre, Apellidos } ]`. `:IdDormi≠dorm` → 403. **Sin `dorm=5`**. Error ahora `500` (antes `580`). |
+| `GET /getArchivos/:Dormitorio/:Nombre?/:Apellidos?/:Matricula?` 🔒 | **(bridge)** PRECEPTOR; dorm forzado al del token; `:Dormitorio≠dorm` → 403. Filtro por nombre/apellidos/matrícula. **Sin `dorm=5`**. |
 
 ### Revisión
 

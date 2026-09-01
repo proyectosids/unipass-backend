@@ -99,10 +99,14 @@ Contrato OTP externo en [otp-service-contract.md](otp-service-contract.md).
 | POST | `/doctosMul` | 🔒 | Sube doc (multipart, campo `Archivo` + `IdDocumento`); dueño = token. |
 | PUT | `/doctosMul/updateProfile` | 🔒 | Reemplaza doc propio. |
 | DELETE | `/doctosMul/:Id` | 🔒 | Borra doc propio. Body `{ IdDoctos }` (ownership) o `{ IdDocumento }` (legacy). |
-| GET | `/doctosProfile/:id?IdDocumento` | — | Un documento (p. ej. foto de perfil). |
-| GET | `/doctos/:Id` | — | Documentos del usuario. |
-| GET | `/getExpediente/:IdDormi` | — | Expedientes por dormitorio. |
-| GET | `/getArchivos/:Dormitorio/:Nombre?/:Apellidos?/:Matricula?` | — | Archivos filtrados. |
+| GET | `/me/documents` | 🔒 | **7.3 D2-A**: documentos del actor (SELF). Allowlist, sin hash/token. |
+| GET | `/documents/review/students` | 🔒 | **7.3 D2-A**: alumnos del dorm del PRECEPTOR (dorm server-side). |
+| GET | `/documents/review/students/:idLogin/documents` | 🔒 | **7.3 D2-A**: docs de un alumno de SU dorm (PRECEPTOR). |
+| GET | `/users/:idLogin/profile-photo` | 🔒 | **7.3 D2-A**: foto de perfil (IdDocumento=6). SELF / PRECEPTOR(mismo dorm) / CHECKER(grant). |
+| GET | `/doctosProfile/:id?IdDocumento=6` | 🔒 | **7.3 D2-A (bridge, DEPRECATED D2-C)**: solo foto (IdDocumento=6); misma política que `/users/:idLogin/profile-photo`. |
+| GET | `/doctos/:Id` | 🔒 | **7.3 D2-A (bridge, DEPRECATED D2-C)**: SELF-only (`:Id`=token → si no 403). |
+| GET | `/getExpediente/:IdDormi` | 🔒 | **7.3 D2-A (bridge, DEPRECATED D2-C)**: PRECEPTOR; dorm forzado al del token (sin `dorm=5`). |
+| GET | `/getArchivos/:Dormitorio/:Nombre?/:Apellidos?/:Matricula?` | 🔒 | **7.3 D2-A (bridge, DEPRECATED D2-C)**: PRECEPTOR; dorm forzado al del token. |
 | ~~PUT~~ | ~~`/statusRevision/:Id`~~ | — | **RETIRADO (7.3 D1-A)** → 404. |
 | PUT | `/documents/:idDoctos/reject` | 🔒 | **7.3 D1-A (ÚNICO rechazo)**: seguro (PRECEPTOR del dorm; state machine; AuditLog). Body `{ motivo, comentario? }`. |
 | ~~PUT~~ | ~~`/doctosMul/reject/:Id`~~ | — | **RETIRADO (7.3 D1-C2)** → 404. |

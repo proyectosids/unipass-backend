@@ -536,3 +536,64 @@ safe user projection (toSafeUser / findSafeUserById) — NUNCA Contraseña ni To
 **Pendiente (fases posteriores, NO 7.4B/R1):** BOLA de lecturas de **Permission/Authorize**, **documentos**
 (7.3) y **checks reads (R2)** siguen abiertas — ver [[permissions-matrix]]. (`/password/:Correo` legacy y
 `/permissionValorado` cliente: **ya retirados**.)
+
+# Task 7.3 — D2-A: contención BOLA/IDOR de LECTURAS documentales → `D2-A Backend read containment = DONE` (Task 7.3 NOT CLOSED)
+
+Cierra la exposición **anónima** de lecturas documentales. Antes: `GET /doctos/:Id`,
+`GET /doctosProfile/:id`, `GET /getExpediente/:IdDormi`, `GET /getArchivos/...` eran **públicos**
+(sin token, sin ownership, sin scope) — cualquiera podía enumerar expedientes y fotos por IdLogin/dorm.
+
+## Contratos NUEVOS server-authoritative (Bearer)
+
+```text
+SELF alumno        → GET /me/documents                                  (req.user.id; allowlist, sin hash/token)
+Revisión preceptor → GET /documents/review/students                     (PRECEPTOR; dorm del token; alumnos {IdLogin,Nombre,Apellidos,Matricula})
+                   → GET /documents/review/students/:idLogin/documents  (PRECEPTOR; target ALUMNO de SU dorm; identificado por IdLogin, no por nombre)
+Foto de perfil     → GET /users/:idLogin/profile-photo                  (IdDocumento=6 forzado server-side; política SELF/PRECEPTOR(mismo dorm)/CHECKER(grant vigente))
+```
+
+- **Dormitorio resuelto server-side** desde el token (`findUserById(req.user.id).Dormitorio`); el cliente
+  no lo elige. **No existe vista global `dorm=5`** en estos contratos.
+- **Revisor documental = únicamente `TipoUser='PRECEPTOR'`** (misma política que el rechazo D1-A;
+  EMPLEADO/VIGILANCIA/ADMINISTRATIVO → `403 FORBIDDEN_DOCUMENT_REVIEWER`).
+- **Foto de perfil (política, sin capability nueva):** SELF; o PRECEPTOR del mismo dormitorio; o **CHECKER**
+  con **grant vigente** que cubra al target — `CheckerGrant` Tipo `Dormitorio` (del dorm del alumno) o
+  `Caseta` (global). Se reutiliza `findActiveGrantByTipo`; **el scope nunca se toma del cliente**. Solo
+  sirve `IdDocumento=6` (el cliente no puede pedir otro tipo por esta ruta).
+- **Sin `SELECT *` en superficie nueva:** `findReviewStudentsByDorm` (IdLogin/Nombre/Apellidos/Matricula),
+  `findProfilePhoto` (IdDoctos/Archivo), `findDocumentsByLogin` (allowlist previa) — 0 reexposición de
+  `Contraseña`/`TokenCFM` (no reaparece R1).
+
+## Bridges legacy CONTENIDOS (DEPRECATED — REMOVE en D2-C; aún **no** retirados)
+
+Se conservan por compatibilidad Flutter, pero ahora exigen Bearer + ownership/scope:
+
+- `GET /doctos/:Id` → **SELF-only**: `:Id` debe ser el IdLogin del token, si no `403 FORBIDDEN_OWNERSHIP`.
+- `GET /doctosProfile/:id?IdDocumento=6` → bridge de **foto de perfil**: exige `IdDocumento=6`
+  (cualquier otro/ausente → `403 FORBIDDEN_DOCUMENT_SCOPE`); misma política que `/users/:idLogin/profile-photo`.
+  Ya **no** puede usarse como lector documental genérico.
+- `GET /getExpediente/:IdDormi` y `GET /getArchivos/:Dormitorio/...` → PRECEPTOR; el dorm se **fuerza** al
+  del actor; `:IdDormi`/`:Dormitorio` debe coincidir (si no `403 FORBIDDEN_DOCUMENT_SCOPE`) — un preceptor
+  de dorm A que pasa `5` o el dorm de B recibe 403 (sin bypass global).
+- `GET /doctos` (sin `:Id`) confirmado **muerto** → `404` (no hay ruta).
+
+## Hallazgo abierto: `DIRECT_FILE_ACCESS_BYPASS` (bloquea `Task 7.3 CLOSED`)
+
+- **Evidencia:** `src/app.js:31` sirve `express.static('public')`; los archivos subidos viven en
+  `public/uploads/<filename>` y `Doctos.Archivo = /uploads/<filename>`. La ruta es **estática y sin
+  autenticación**: conocida (o adivinada) la URL, cualquiera descarga el archivo **sin token**.
+- **Impacto:** proteger los `GET` de la API **no** protege el binario. Un INE/comprobante/foto de un alumno
+  de otro dormitorio es descargable directamente si se conoce el nombre de archivo (los nombres los emite
+  multer; su entropía es el único obstáculo — **no** es un control de acceso).
+- **Propuesta (no ejecutada; requiere decisión + coordinación Flutter):**
+  1. Servir los archivos por un endpoint autenticado (`GET /files/:id` con la **misma** política documental)
+     en vez de `express.static` sobre `/uploads`; **o**
+  2. Migrar a almacenamiento privado (p. ej. Cloudinary con entrega firmada de corta duración) y devolver
+     URLs firmadas desde los `GET` ya contenidos.
+- **No se cambió la infraestructura estática** (rompería la carga de imágenes de Flutter sin migración
+  coordinada). Se documenta con evidencia + impacto + propuesta; **`Task 7.3` permanece `NOT CLOSED`**
+  hasta resolver este bypass y ejecutar D2-C (retiro de bridges).
+
+**Estado: `D2-A Backend read containment = DONE`** (0 lecturas documentales anónimas por la API; contratos
+server-authoritative; foto de perfil sin capability nueva; sin `SELECT *`). **`Task 7.3` = NOT CLOSED**
+(pendiente `DIRECT_FILE_ACCESS_BYPASS` y **D2-C** retiro de bridges tras migración Flutter D2-B).
