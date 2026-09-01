@@ -3,6 +3,7 @@
 import { hashData, VerifyHashData } from '../util/hashData.js';
 import { validatePassword } from '../util/passwordPolicy.js';
 import { toSafeUser } from '../util/safeUser.js';
+import { recalculateDocumentationStatus } from '../repositories/doctos.repo.js';
 import {
     generateAccessToken,
     generateRefreshToken,
@@ -284,18 +285,14 @@ export const putMePassword = async (req, res) => {
 // - SearchTokenFCM (GET /VerToken/:Matricula): exponía TokenCFM (token de push) de cualquier matrícula.
 //   Sin consumidores HTTP; la resolución FCM es INTERNA (notificationService.findTokenFCMByMatricula). → 404.
 
-// CONTENIDO (Task 7.3 D1-A · DEPRECATED — REMOVE D1-C): PUT /Documentacion/:Matricula. Antes era
-// ANÓNIMO y el cliente fijaba LoginUniPass.Documentacion (0/1) de cualquier matrícula. Ahora requiere
-// Bearer y NO acepta escritura arbitraria: la `:Matricula` del path y el `StatusDoc` del body se
-// IGNORAN. Devuelve el valor ACTUAL de Documentacion del usuario autenticado (SELF), sin modificarlo.
-// El recálculo server-computed real se implementa en D1-A.2 (requiere la regla de tipos requeridos).
+// CONTENIDO (Task 7.3 D1-A · DEPRECATED — REMOVE D1-C): PUT /Documentacion/:Matricula. Requiere Bearer;
+// `:Matricula` y `StatusDoc` se IGNORAN (sin escritura arbitraria de 0/1). D1-A.2: RECALCULA la
+// completitud server-side (misma fuente de verdad) para el usuario autenticado (SELF) y devuelve el
+// valor calculado. No confía en el cliente.
 export const documentComplet = async (req, res) => {
     try {
-        const user = await findUserById(req.user.id);
-        if (!user) {
-            return res.status(404).json({ message: 'Usuario no encontrado', code: 'USER_NOT_FOUND' });
-        }
-        return res.json({ Documentacion: user.Documentacion ?? null });
+        const documentacion = await recalculateDocumentationStatus(req.user.id);
+        return res.json({ Documentacion: documentacion });
     } catch (error) {
         res.status(500).json({ error: error.message });
     }

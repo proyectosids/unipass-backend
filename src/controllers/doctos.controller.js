@@ -6,9 +6,9 @@ import {
     findDocumentsByLogin,
     createDocument,
     updateDocumentArchivo,
-    deleteDocument,
     findDocumentById,
-    deleteDocumentById,
+    deleteDocumentByIdAndRecalcTx,
+    deleteDocumentByTypeAndRecalcTx,
     findExpedientesByDormitorio,
     findArchivosFiltered,
     rejectDocumentTx,
@@ -151,7 +151,7 @@ export const deleteFileDoc = async (req, res) => {
                 return res.status(403).json({ message: 'No puedes borrar un documento que no te pertenece', code: 'FORBIDDEN_OWNERSHIP' });
             }
             archivoPath = doc.Archivo;
-            deleted = await deleteDocumentById(IdDoctos);
+            deleted = await deleteDocumentByIdAndRecalcTx({ idDoctos: IdDoctos, idLogin }); // D1-A.2: delete + recalc atómico
         } else {
             // Legacy: IdDocumento = TIPO. Se opera solo sobre el doc propio (token.id);
             // no puede alcanzar documentos ajenos, por lo que "no es tuyo" es 404.
@@ -160,7 +160,7 @@ export const deleteFileDoc = async (req, res) => {
                 return res.status(404).json({ message: 'Documento no encontrado', code: 'DOC_NOT_FOUND' });
             }
             archivoPath = fileRecord.Archivo;
-            deleted = await deleteDocument(idLogin, IdDocumento);
+            deleted = await deleteDocumentByTypeAndRecalcTx({ idLogin, idDocumento: IdDocumento }); // D1-A.2
         }
 
         if (!deleted) {

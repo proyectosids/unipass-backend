@@ -25,6 +25,7 @@ import { findUserById, findUserByMatricula } from '../repositories/user.repo.js'
 import { findBedroomIdentificador } from '../repositories/bedroom.repo.js';
 import { resolvePuebloChain } from '../util/puebloChain.js';
 import { resolverAutorizadorSalida } from '../services/authorizerResolver.service.js';
+import { evaluateDocumentation } from '../repositories/doctos.repo.js';
 import * as ulv from '../services/ulvApiService.js';
 import { sendToEmployee } from '../services/notificationService.js';
 import { emitToUser, emitToEmpleado } from '../util/socketHelpers.js';
@@ -93,6 +94,17 @@ export const createPermission = async (req, res) => {
     }
     if (actor.TipoUser !== 'ALUMNO') {
         return res.status(403).json({ message: 'Solo un alumno puede solicitar una salida', code: 'FORBIDDEN_USER_TYPE' });
+    }
+
+    // Gate documental (Task 7.3 D1-A.2): autoridad server-side ACTUAL (no la columna Documentacion, que
+    // es solo cache). Si la documentación requerida no está completa (falta alguno o alguno Rechazado),
+    // o no se puede resolver el reglamento, NO se crea Permission/Authorize/CheckPoints. El body no evade.
+    const evalDoc = await evaluateDocumentation(actor.IdLogin);
+    if (evalDoc.error) {
+        return res.status(409).json({ message: 'No se pudo determinar la documentacion requerida', code: evalDoc.error });
+    }
+    if (!evalDoc.complete) {
+        return res.status(409).json({ message: 'Documentacion incompleta para solicitar una salida', code: 'DOCUMENTATION_INCOMPLETE', missing: evalDoc.missing, rejected: evalDoc.rejected });
     }
 
     const tipo = Number(req.body?.IdTipoSalida);

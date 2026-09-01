@@ -59,6 +59,13 @@ d('Task 7.4B Commit B - creación de cadena server-side (integración)', () => {
         alumno = await insertAccount({ matricula: String(base), tipo: 'ALUMNO' });
         autor = await insertAccount({ matricula: String(base + 1), tipo: 'PRECEPTOR' });
         autor2 = await insertAccount({ matricula: String(base + 2), tipo: 'PRECEPTOR' });
+        // 7.3 D1-A.2: el gate documental de POST /permission exige documentación completa. Dorm 4
+        // (UNIVERSITARIO, M) -> requeridos [1,5,7]; se siembran como Pendiente.
+        await pool.request().input('id', sql.Int, alumno.IdLogin).query('UPDATE UNIPASS.LoginUniPass SET Dormitorio=4 WHERE IdLogin=@id');
+        for (const idDoc of [1, 5, 7]) {
+            await pool.request().input('d', sql.Int, idDoc).input('l', sql.Int, alumno.IdLogin)
+                .query("INSERT INTO UNIPASS.Doctos (IdDocumento, Archivo, StatusDoctos, IdLogin, StatusRevision) VALUES (@d,'/uploads/x.pdf','Adjunto',@l,'Pendiente')");
+        }
         tokenAlumno = generateAccessToken(alumno);
         tokenAutor = generateAccessToken(autor); // PRECEPTOR (no ALUMNO)
     });
@@ -70,6 +77,7 @@ d('Task 7.4B Commit B - creación de cadena server-side (integración)', () => {
             await pool.request().input('id', sql.Int, id).query('DELETE FROM UNIPASS.IdempotencyRequest WHERE IdPermission=@id');
             await pool.request().input('id', sql.Int, id).query('DELETE FROM UNIPASS.Permission WHERE IdPermission=@id');
         }
+        for (const id of cuentas) await pool.request().input('id', sql.Int, id).query('DELETE FROM UNIPASS.Doctos WHERE IdLogin=@id');
         for (const id of cuentas) await pool.request().input('id', sql.Int, id).query('DELETE FROM UNIPASS.LoginUniPass WHERE IdLogin=@id');
         await pool?.close();
     });

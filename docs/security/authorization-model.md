@@ -445,17 +445,47 @@ DESPUÉS: Bearer → PRECEPTOR → actor server-side → scope de dormitorio ser
   por **rol PRECEPTOR + scope de dormitorio**, no por capability.
 - **`Documentacion` = presencia/completitud de uploads** bajo la semántica actual — **NO** "documentos aprobados".
 
-### Follow-ups documentados (NO en D1-A)
-- **D1-A.2 — `Documentacion` server-computed:** requiere la **regla de tipos requeridos por alumno**, que
-  **no existe server-side** (el catálogo tiene 4 reglamentos mutuamente excluyentes por dormitorio; la lista
-  vive en Flutter). Pendiente de esa regla para `recalculateDocumentationStatusTx` + wiring atómico en
-  `POST /doctosMul` / `DELETE /doctosMul` / re-upload.
-- **`FOLLOW_UP_BUSINESS_RULE_REJECTED_DOCUMENT_BLOCKS_EXIT`:** decidir si un documento presente pero
-  `Rechazado` debe invalidar `Documentacion` (hoy sigue contando como "subido"). No resuelto en D1-A.
-- **D2 — lecturas documentales** (`GET /doctos`, `/doctosProfile`, `/getExpediente`, `/getArchivos`)
-  siguen **anónimas**: pendientes en el bloque de lecturas BOLA.
-- **D1-B** (Flutter migra a `/documents/:idDoctos/reject`) → **D1-C** (retirar legados). **Despliegue coordinado**
-  (Flutter viejo no manda Bearer). **Task 7.3 NO CLOSED.**
+## Task 7.3 — D1-A.2: `Documentacion` server-computed + gate en POST /permission
+
+Fuente de verdad server-side de la completitud documental (regla extraída del Flutter en D1-B):
+
+```text
+NivelAcademico + Sexo  (DB: Bedroom.NivelDormitorio via Dormitorio + LoginUniPass.Sexo)
+      ↓ reglamento requerido
+UNIVERSITARIO+M→1 · NIVEL MEDIO(=Bachiller)+M→2 · UNIVERSITARIO+F→3 · NIVEL MEDIO+F→4
+      + 5 (Convenio de salidas) + 7 (INE del Tutor)     (6 Imagen Perfil NO cuenta)
+      ↓
+documentationComplete = todos los requeridos PRESENTES  AND  ninguno StatusRevision='Rechazado'
+      (Pendiente y Aprobado cuentan como válidos; Aprobado NO es requerido)
+```
+
+- **Helpers (`doctos.repo`):** `resolveRequiredDocumentIds` (matriz, en `util/documentRequirements.js`),
+  `evaluateDocumentation(idLogin)` (lectura, autoridad del gate), `recalcDocumentacionInTx(tx,idLogin)`
+  (persiste `Documentacion` 0/1 en la misma tx de la mutación), `recalculateDocumentationStatus(idLogin)`.
+- **`LoginUniPass.Documentacion` = proyección/cache** de `documentationComplete`. **NO es autoridad**: el
+  gate y la evaluación usan la fuente real. Un valor stale (0/1) no altera la decisión.
+- **Recálculo atómico** en cada mutación que pueda cambiar completitud, en la MISMA transacción:
+  `POST /doctosMul` (upsert), `DELETE /doctosMul` (delete), `DOCUMENT_REJECT` (rechazo de requerido → 0).
+  El re-upload `Rechazado→Pendiente` recalcula → puede volver a 1.
+- **Gate obligatorio en `POST /permission`** (server-side, tras el gate ALUMNO, antes de crear nada):
+  `evaluateDocumentation(req.user.id)`. Incompleta → **`409 DOCUMENTATION_INCOMPLETE`** (con `missing`/
+  `rejected`); reglamento no resoluble → **`409 DOCUMENT_REQUIREMENTS_UNRESOLVED`**. **No** se crea
+  Permission/Authorize/CheckPoints. El body no evade; **la columna `Documentacion` stale tampoco** (se
+  evalúa la fuente real). Idempotencia de `POST /permission` intacta.
+- **`FOLLOW_UP_BUSINESS_RULE_REJECTED_DOCUMENT_BLOCKS_EXIT` = RESUELTO** (evidencia Frontend `menu_student`):
+  **sí, un requerido `Rechazado` bloquea la completitud** para Salidas.
+- **Barrido de reads de `Documentacion` (§14):** el único read es la proyección segura (`GET /me` + login) →
+  **informativo/UI, NO controla autorización**. Ningún control de seguridad depende de la columna.
+- **Dry-run (21 alumnos):** completos 3, incompletos 15, no-resolubles 3 (dorm null/5/6), la columna
+  contradecía la evaluación en 1. **No se hizo backfill** (el gate usa la evaluación viva; el recálculo
+  forward mantiene la cache; los 3 no-resolubles son anomalías de dato a revisar antes de normalizar).
+
+### Follow-ups (NO en D1-A.2)
+- **Backfill de `Documentacion`** (cache sync one-time): opcional; **no** ejecutado (3 dorms no-resolubles
+  a revisar). El gate no depende de la cache, así que no es urgente.
+- **D2 — lecturas documentales** (`GET /doctos`, `/doctosProfile`, `/getExpediente`, `/getArchivos`) siguen **anónimas**.
+- **D1-C** — retirar los bridges legados (`PUT /doctosMul/reject/:Id`, `PUT /Documentacion/:Matricula`)
+  tras confirmar 0 consumidores Flutter. **Task 7.3 NO CLOSED.**
 
 # BOLA/IDOR R1 (usuarios/credenciales/tokens) = CLOSED
 

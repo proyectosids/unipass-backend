@@ -1,8 +1,64 @@
 import sql from 'mssql';
 import { withConnection } from '../database/connection.js';
+import { resolveRequiredDocumentIds } from '../util/documentRequirements.js';
 
 // Repositorio de Doctos + DocumentCatalog (expediente documental del alumno).
 // Regla de dormitorio: IdDormitorio = 5 significa vista global (dormitorios 1-4).
+
+// === Task 7.3 D1-A.2: completitud documental (fuente de verdad server-side) ===
+// nivel+sexo se resuelven de DB (LoginUniPass.Sexo + Bedroom.NivelDormitorio via Dormitorio), NUNCA del
+// cliente. `complete` = todos los requeridos presentes AND ninguno 'Rechazado'. Aprobado NO es requerido.
+const _evaluarDocumentacion = async (nuevaReq, idLogin) => {
+    const u = (await nuevaReq()
+        .input('id', sql.Int, idLogin)
+        .query(`SELECT lp.Sexo, b.NivelDormitorio
+                FROM UNIPASS.LoginUniPass lp
+                LEFT JOIN UNIPASS.Bedroom b ON b.IdBedroom = lp.Dormitorio
+                WHERE lp.IdLogin = @id`)).recordset[0];
+    if (!u) return { error: 'DOCUMENT_REQUIREMENTS_UNRESOLVED' };
+    const required = resolveRequiredDocumentIds({ nivelDormitorio: u.NivelDormitorio, sexo: u.Sexo });
+    if (!required) return { error: 'DOCUMENT_REQUIREMENTS_UNRESOLVED' };
+
+    const docs = (await nuevaReq()
+        .input('id', sql.Int, idLogin)
+        .query('SELECT IdDocumento, StatusRevision FROM UNIPASS.Doctos WHERE IdLogin = @id')).recordset;
+    const status = new Map(docs.map((d) => [d.IdDocumento, d.StatusRevision]));
+    const present = required.filter((id) => status.has(id));
+    const missing = required.filter((id) => !status.has(id));
+    const rejected = required.filter((id) => status.get(id) === 'Rechazado');
+    return { complete: missing.length === 0 && rejected.length === 0, required, present, missing, rejected };
+};
+
+// Evaluación de LECTURA (sin escribir). Autoridad para el gate de POST /permission.
+export const evaluateDocumentation = (idLogin) =>
+    withConnection(async (pool) => _evaluarDocumentacion(() => pool.request(), idLogin));
+
+// Recalcula y persiste LoginUniPass.Documentacion (0/1) DENTRO de una tx existente (mismo commit que la
+// mutación). No resoluble -> 0 (no completo). Solo escribe si cambió. Devuelve la evaluación.
+export const recalcDocumentacionInTx = async (tx, idLogin) => {
+    const ev = await _evaluarDocumentacion(() => new sql.Request(tx), idLogin);
+    const val = ev.error ? 0 : (ev.complete ? 1 : 0);
+    await new sql.Request(tx)
+        .input('id', sql.Int, idLogin)
+        .input('v', sql.Int, val)
+        .query('UPDATE UNIPASS.LoginUniPass SET Documentacion = @v WHERE IdLogin = @id AND (Documentacion IS NULL OR Documentacion <> @v)');
+    return ev;
+};
+
+// Recalcula Documentacion en su propia tx (para el bridge legacy /Documentacion). Devuelve 0/1.
+export const recalculateDocumentationStatus = (idLogin) =>
+    withConnection(async (pool) => {
+        const tx = new sql.Transaction(pool);
+        await tx.begin();
+        try {
+            const ev = await recalcDocumentacionInTx(tx, idLogin);
+            await tx.commit();
+            return ev.error ? 0 : (ev.complete ? 1 : 0);
+        } catch (error) {
+            try { await tx.rollback(); } catch (rbErr) { console.error('[Tx] rollback error:', rbErr.message); }
+            throw error;
+        }
+    });
 
 export const findDocumentByLoginAndType = (idLogin, idDocumento) =>
     withConnection(async (pool) => {
@@ -40,45 +96,47 @@ export const findDocumentsByLogin = (idLogin) =>
         return result.recordset;
     });
 
-// Upsert: si ya existe (IdLogin, IdDocumento), actualiza limpiando campos de rechazo.
-// Si no existe, inserta normal.
+// Upsert TRANSACCIONAL (Task 7.3 D1-A.2): si ya existe (IdLogin, IdDocumento) actualiza limpiando los
+// campos de rechazo (Rechazado -> Pendiente); si no, inserta. Recalcula Documentacion en la MISMA tx.
 export const createDocument = ({ idDocumento, archivo, idLogin, statusDoctos = 'Adjunto' }) =>
     withConnection(async (pool) => {
-        const existing = await pool.request()
-            .input('IdLogin', sql.Int, idLogin)
-            .input('IdDocumento', sql.Int, idDocumento)
-            .query(`SELECT IdDoctos FROM UNIPASS.Doctos
-                    WHERE IdLogin = @IdLogin AND IdDocumento = @IdDocumento`);
+        const tx = new sql.Transaction(pool);
+        await tx.begin();
+        try {
+            const existing = await new sql.Request(tx)
+                .input('IdLogin', sql.Int, idLogin)
+                .input('IdDocumento', sql.Int, idDocumento)
+                .query('SELECT IdDoctos FROM UNIPASS.Doctos WHERE IdLogin = @IdLogin AND IdDocumento = @IdDocumento');
 
-        if (existing.recordset.length > 0) {
-            const existingId = existing.recordset[0].IdDoctos;
-            await pool.request()
-                .input('IdDoctos', sql.Int, existingId)
-                .input('Archivo', sql.VarChar, archivo)
-                .input('StatusDoctos', sql.VarChar, statusDoctos)
-                .query(`UPDATE UNIPASS.Doctos
-                        SET Archivo = @Archivo,
-                            StatusDoctos = @StatusDoctos,
-                            StatusRevision = 'Pendiente',
-                            MotivoRechazo = NULL,
-                            ComentarioRechazo = NULL,
-                            RechazadoPor = NULL,
-                            FechaRechazo = NULL
-                        WHERE IdDoctos = @IdDoctos`);
-            return existingId;
+            let idDoctos;
+            if (existing.recordset.length > 0) {
+                idDoctos = existing.recordset[0].IdDoctos;
+                await new sql.Request(tx)
+                    .input('IdDoctos', sql.Int, idDoctos)
+                    .input('Archivo', sql.VarChar, archivo)
+                    .input('StatusDoctos', sql.VarChar, statusDoctos)
+                    .query(`UPDATE UNIPASS.Doctos
+                            SET Archivo=@Archivo, StatusDoctos=@StatusDoctos, StatusRevision='Pendiente',
+                                MotivoRechazo=NULL, ComentarioRechazo=NULL, RechazadoPor=NULL, FechaRechazo=NULL
+                            WHERE IdDoctos=@IdDoctos`);
+            } else {
+                const ins = await new sql.Request(tx)
+                    .input('IdDocumento', sql.Int, idDocumento)
+                    .input('Archivo', sql.VarChar, archivo)
+                    .input('StatusDoctos', sql.VarChar, statusDoctos)
+                    .input('IdLogin', sql.Int, idLogin)
+                    .query(`INSERT INTO UNIPASS.Doctos (IdDocumento, Archivo, StatusDoctos, IdLogin)
+                            VALUES (@IdDocumento, @Archivo, @StatusDoctos, @IdLogin);
+                            SELECT SCOPE_IDENTITY() AS IdDoctos`);
+                idDoctos = ins.recordset[0].IdDoctos;
+            }
+            await recalcDocumentacionInTx(tx, idLogin); // completitud atómica con el upsert
+            await tx.commit();
+            return idDoctos;
+        } catch (error) {
+            try { await tx.rollback(); } catch (rbErr) { console.error('[Tx] rollback error:', rbErr.message); }
+            throw error;
         }
-
-        const result = await pool
-            .request()
-            .input('IdDocumento', sql.Int, idDocumento)
-            .input('Archivo', sql.VarChar, archivo)
-            .input('StatusDoctos', sql.VarChar, statusDoctos)
-            .input('IdLogin', sql.Int, idLogin)
-            .query(`INSERT INTO UNIPASS.Doctos (IdDocumento, Archivo, StatusDoctos, IdLogin)
-                    VALUES (@IdDocumento, @Archivo, @StatusDoctos, @IdLogin);
-                    SELECT SCOPE_IDENTITY() AS IdDoctos`);
-        if (result.recordset.length === 0) return null;
-        return result.recordset[0].IdDoctos;
     });
 
 export const updateDocumentArchivo = (idLogin, idDocumento, archivo) =>
@@ -127,6 +185,39 @@ export const deleteDocumentById = (idDoctos) =>
             .input('IdDoctos', sql.Int, idDoctos)
             .query('DELETE FROM UNIPASS.Doctos WHERE IdDoctos = @IdDoctos');
         return result.rowsAffected[0] > 0;
+    });
+
+// Task 7.3 D1-A.2: borrado SELF + recálculo de Documentacion en UNA transacción (atómico con el borrado).
+export const deleteDocumentByIdAndRecalcTx = ({ idDoctos, idLogin }) =>
+    withConnection(async (pool) => {
+        const tx = new sql.Transaction(pool);
+        await tx.begin();
+        try {
+            const del = await new sql.Request(tx).input('IdDoctos', sql.Int, idDoctos)
+                .query('DELETE FROM UNIPASS.Doctos WHERE IdDoctos = @IdDoctos');
+            await recalcDocumentacionInTx(tx, idLogin);
+            await tx.commit();
+            return del.rowsAffected[0] > 0;
+        } catch (error) {
+            try { await tx.rollback(); } catch (rbErr) { console.error('[Tx] rollback error:', rbErr.message); }
+            throw error;
+        }
+    });
+
+export const deleteDocumentByTypeAndRecalcTx = ({ idLogin, idDocumento }) =>
+    withConnection(async (pool) => {
+        const tx = new sql.Transaction(pool);
+        await tx.begin();
+        try {
+            const del = await new sql.Request(tx).input('Id', sql.Int, idLogin).input('IdDocumento', sql.Int, idDocumento)
+                .query('DELETE FROM UNIPASS.Doctos WHERE IdLogin = @Id AND IdDocumento = @IdDocumento');
+            await recalcDocumentacionInTx(tx, idLogin);
+            await tx.commit();
+            return del.rowsAffected[0] > 0;
+        } catch (error) {
+            try { await tx.rollback(); } catch (rbErr) { console.error('[Tx] rollback error:', rbErr.message); }
+            throw error;
+        }
     });
 
 export const findExpedientesByDormitorio = (idDormitorio) =>
@@ -222,6 +313,10 @@ export const rejectDocumentTx = ({ idDoctos, actorMatricula, actorDormitorio, mo
                             RechazadoPor=@RechazadoPor, FechaRechazo=GETDATE()
                         WHERE IdDoctos=@Id AND StatusRevision='Pendiente'`);
             if (upd.rowsAffected[0] !== 1) { await tx.rollback(); return { error: 'INVALID_DOCUMENT_TRANSITION' }; }
+
+            // D1-A.2: rechazar un requerido puede volver la documentación incompleta -> recalcular
+            // Documentacion del DUEÑO en la MISMA transacción (atómico con el rechazo).
+            await recalcDocumentacionInTx(tx, doc.IdLogin);
 
             await new sql.Request(tx)
                 .input('ActorIdLogin', sql.Int, audit.actorIdLogin ?? null)

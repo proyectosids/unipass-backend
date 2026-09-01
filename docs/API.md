@@ -160,7 +160,7 @@ Body: `{ "refreshToken": "..." }` → **204** (idempotente). 400 `MISSING_REFRES
 | `PUT /terminarCargo/:Matricula` | — | Limpia `IdCargoDelegado` y borra el registro de `Position` asociado. |
 | ~~`GET /VerToken/:Matricula`~~ | — | **RETIRADO (BOLA/IDOR R1-A)** → 404. Exponía `TokenCFM` (token de push) de cualquiera. La resolución FCM (incluida la suplencia de `Position`) es **interna** server-side (`notificationService`). |
 | `PUT /TokenDispositivo/:Matricula` | ✅ | Body `{ TokenCFM }`. Registra token FCM. **Task 7.2**: matrícula del token (`:Matricula` ignorado). |
-| `PUT /Documentacion/:Matricula` 🔒 | ✅ | **CONTENIDO (7.3 D1-A, DEPRECATED — REMOVE D1-C)**: Bearer; ignora `:Matricula` y `StatusDoc`; devuelve el `Documentacion` propio (SELF) sin escritura arbitraria. |
+| `PUT /Documentacion/:Matricula` 🔒 | ✅ | **CONTENIDO (7.3 D1-A/A.2, DEPRECATED — REMOVE D1-C)**: Bearer; ignora `:Matricula`/`StatusDoc`; **recalcula** la completitud server-side (SELF) y devuelve `{ Documentacion }` calculado. Sin escritura arbitraria. |
 
 ### Registro — `POST /register` (`resgister.routes.js`)
 
@@ -240,7 +240,7 @@ Body: `{ FechaCheck, Estatus, Observaciones }` (`Estatus: 'Confirmada'` para con
 | Método y ruta | Descripción |
 |---|---|
 | `GET /permission/:Id?page=1&limit=10` | Permisos del alumno (`:Id` = IdUser), **paginado**: `{ data, pagination: { totalItems, totalPages, currentPage, limit } }`. Campos explícitos seguros. |
-| `POST /permission` 🔒 | **Task 7.2 + 7.4B/B**: `IdUser` = token (body ignorado). Crea permiso **y la cadena `Authorize` server-side** (tipos 1/2/3); **el cliente no manda autorizador ni estado** (`StatusPermission`/`StatusAuthorize`/`IdEmpleado` ignorados; todo nace `Pendiente`). Body `{ FechaSolicitada, FechaSalida, FechaRegreso, Motivo, IdTipoSalida, MedioSalida? }`. **Tipo 4 → 501 `SALIDA_TIPO_NO_DISPONIBLE`**; tipo inválido → 400. `409` si no se resuelve autorizador (sin permiso huérfano). ⚠️ Resta **6 h** a las fechas (UTC). Emite `new_permission_request`. 401 sin token. |
+| `POST /permission` 🔒 | **Task 7.2 + 7.4B/B + 7.3 D1-A.2**: `IdUser` = token (body ignorado). **Gate documental server-side** (evaluación viva, no la columna): documentación incompleta → **`409 DOCUMENTATION_INCOMPLETE`** (`missing`/`rejected`), reglamento no resoluble → **`409 DOCUMENT_REQUIREMENTS_UNRESOLVED`**, sin crear nada. Luego crea permiso **y la cadena `Authorize` server-side** (tipos 1/2/3; `StatusPermission`/`StatusAuthorize`/`IdEmpleado` ignorados; todo nace `Pendiente`). Body `{ FechaSolicitada, FechaSalida, FechaRegreso, Motivo, IdTipoSalida, MedioSalida? }`. **Tipo 4 → 501**; tipo inválido → 400. `409` si no se resuelve autorizador (sin permiso huérfano). ⚠️ Resta **6 h** (UTC). 401 sin token. |
 | `PUT /permission/:Id` 🔒 | **Cancela** (`StatusPermission='Cancelado'`). **Task 7.2**: solo el dueño (`Permission.IdUser == token.id`), si no **403** `FORBIDDEN_OWNERSHIP`; 404 `PERMISSION_NOT_FOUND`. Emite `permission_cancelled`. |
 | `DELETE /permission/:Id` 🔒 | **Task 7 (§8)**: cerrado a capability `ADMIN` (Frontend no lo usa). Elimina el permiso. 401/403. |
 | ~~`PUT /permissionValorado/:Id`~~ | **RETIRADO (7.4B Commit A)** → 404. El estado global de `Permission` lo calcula el backend al resolver cada eslabón; el cliente ya no lo fija. |
