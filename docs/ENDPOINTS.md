@@ -68,7 +68,7 @@ Contrato OTP externo en [otp-service-contract.md](otp-service-contract.md).
 ## Checks / checador (`checks.routes.js`)
 | Método | Ruta | Auth | Propósito |
 |---|---|---|---|
-| POST | `/checks` | — | Crea un checkpoint. Body `{ Accion, IdPoint, IdPermission }`. |
+| ~~POST~~ | ~~`/checks`~~ | — | **RETIRADO (Checks Hardening C2)** → 404. Los 4 CheckPoints se crean server-side al aprobar el permiso. |
 | GET | `/checksDormitorio/:Id` | — | Pendientes paso 1 (salida dormitorio); `:Id`=IdDormitorio. |
 | GET | `/checksVigilancia` | — | Pendientes paso 2 (salida caseta). |
 | GET | `/checksVigilanciaRegreso` | — | Pendientes paso 3 (regreso caseta). |

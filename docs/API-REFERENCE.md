@@ -325,11 +325,13 @@ Los 4 devuelven el **mismo shape seguro** (sin `Contraseña`/`Correo`/`TokenCFM`
 | `GET /checksVigilanciaRegreso` | 3 | Paso 2 `Confirmada` |
 | `GET /checksDormitorioFin/:Id` | 4 | Pasos 2 **y** 3 `Confirmada` |
 
-### POST /checks
+### ~~POST /checks~~ — RETIRADO (Checks Hardening C2)
 
-`{ "Accion": "SALIDA", "IdPoint": 3, "IdPermission": 6033 }` →
-`{ "Id": 4041, "StatusCheck": "Pendiente", "Accion": "SALIDA", "IdPoint": 3, "IdPermission": 6033, "Observaciones": "Ninguna" }`.
-El cliente crea los 4 al aprobarse el permiso.
+**Eliminado** (ruta + controlador `createChecksPermission` + repo `createCheckPoint`). Llamarlo → **404**.
+Los 4 CheckPoints (SALIDA/Dorm, SALIDA/Caseta, RETORNO/Caseta, RETORNO/Dorm, todos `Pendiente`) se crean
+**server-side** dentro de la transacción que aprueba el permiso (`ensureCheckPointsTx` en
+`resolveAuthorizeLinkTx`), idempotentes por `UNIQUE(IdPermission, IdPoint, Accion)`. El cliente ya no
+participa en la creación; solo refresca las bandejas.
 
 ### PUT /checks/:id 🔒
 

@@ -7,6 +7,7 @@ import sql from 'mssql';
 import 'dotenv/config';
 import app from '../src/app.js';
 import { hashData } from '../src/util/hashData.js';
+import { generateAccessToken } from '../src/util/tokens.js';
 import { resolveAuthorizeLinkTx } from '../src/repositories/authorize.repo.js';
 
 const hasDb = !!process.env.DB_SERVER;
@@ -169,15 +170,21 @@ d('Checks Hardening C1 - auto-creación server-side (integración)', () => {
         expect(await permStatus(idPermission)).toBe('Pendiente'); // rollback del Permission
         expect(await checksOf(idPermission)).toHaveLength(0);
     });
-    // 14 POST /checks legacy tras auto-creación -> NO duplica y NO 500
-    it('POST /checks legacy tras auto-creación -> idempotente (existing), sin duplicar ni 500', async () => {
+    // 14 (C2) POST /checks RETIRADO -> 404 (sin token y con Bearer); 0 CheckPoints nuevos.
+    it('POST /checks retirado -> 404 sin token y no crea CheckPoints', async () => {
         const { idPermission } = await crearPermiso({ tipoSalida: 1, empleados: [jefe.Matricula] });
-        await approve(idPermission, jefe.Matricula, jefe.IdLogin);
-        expect(await checksOf(idPermission)).toHaveLength(4);
-        const res = await request(app).post('/checks').send({ IdPermission: idPermission, IdPoint: 1, Accion: 'SALIDA' });
-        expect(res.status).toBe(200);
-        expect(res.body.existing).toBe(true);
-        expect(await checksOf(idPermission)).toHaveLength(4); // no duplicó
+        const antes = (await checksOf(idPermission)).length; // 0 (aún no aprobado)
+        const res = await request(app).post('/checks').send({ Accion: 'SALIDA', IdPoint: 1, IdPermission: idPermission });
+        expect(res.status).toBe(404);
+        expect((await checksOf(idPermission)).length).toBe(antes); // 0 CheckPoints nuevos
+    });
+    it('POST /checks retirado -> 404 con Bearer válido (la ruta no existe, no es gating)', async () => {
+        const { idPermission } = await crearPermiso({ tipoSalida: 1, empleados: [jefe.Matricula] });
+        const token = generateAccessToken({ IdLogin: alumno.IdLogin, Matricula: alumno.Matricula, TipoUser: 'ALUMNO' });
+        const res = await request(app).post('/checks').set('Authorization', `Bearer ${token}`)
+            .send({ Accion: 'SALIDA', IdPoint: 1, IdPermission: idPermission });
+        expect(res.status).toBe(404);
+        expect((await checksOf(idPermission)).length).toBe(0);
     });
     // 10-bis criterio principal: sin ninguna llamada POST /checks, los 4 existen igual
     it('criterio principal: sin POST /checks, los 4 CheckPoints existen igual', async () => {

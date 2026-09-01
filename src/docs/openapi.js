@@ -50,7 +50,7 @@ const E = [
   ['get', '/progresAuthorize/{Id}', 'Autorización', 'Avance de la cadena'],
   ['get', '/asignarPrece/{Nivel}', 'Autorización', 'Dormitorio/preceptor por nivel+sexo', { query: { Sexo: 'M' } }],
   // --- Checks ---
-  ['post', '/checks', 'Checks', 'Crear checkpoint', { body: { Accion: 'SALIDA', IdPoint: 3, IdPermission: 7069 } }],
+  // RETIRADO (Checks Hardening C2): POST /checks eliminado. Los 4 CheckPoints se crean server-side al aprobar el permiso.
   ['get', '/checksDormitorio/{Id}', 'Checks', 'Pendientes paso 1 (salida dormitorio)'],
   ['get', '/checksVigilancia', 'Checks', 'Pendientes paso 2 (salida caseta)'],
   ['get', '/checksVigilanciaRegreso', 'Checks', 'Pendientes paso 3 (regreso caseta)'],

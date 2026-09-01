@@ -71,7 +71,7 @@ Notas:
 |---|---|---|---|---|
 | PUT | /checks/:id | CHECKS_MANAGE | DORMITORIO/Caseta del grant | ✅ CHECKER+orden (7.4A) |
 | GET | /checksDormitorio, /checksVigilancia, ... | CHECKS_VIEW | DORMITORIO/Caseta | ⏳ abierto |
-| POST | /checks | CHECKS_MANAGE | — | ⏳ 7.4B |
+| ~~POST~~ | ~~/checks~~ | — | — | ✅ **RETIRADO (Checks C2)** → 404; creación server-side al aprobar |
 
 ### Admin / Reportes / Capabilities / Config / Auditoría
 | M | Endpoint | Permiso | Scope | Hoy |

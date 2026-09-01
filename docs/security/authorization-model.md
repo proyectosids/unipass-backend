@@ -384,7 +384,36 @@ cadena `Authorize` de forma **atómica y server-side**. El cliente **no** decide
 - **Deuda menor:** `findNextPendingEmpleado` ordena por `IdAuthorize ASC` en vez de `Orden`. No afecta la
   seguridad actual (las cadenas nuevas persisten `Orden` e `IdAuthorize` en la misma secuencia y
   `resolveAuthorizeLinkTx` hace el enforcement correcto). Dejar como **cleanup posterior**.
-- **Aparte (no 7.4B):** endurecer `POST /checks` (anónimo, sin ownership, sin idempotencia) → tarea nueva independiente.
+- **Checks creation hardening (tarea aparte de 7.4B):** ✅ **CLOSED** — ver sección siguiente.
+
+# Checks creation hardening = CLOSED
+
+La creación de `CheckPoints` es **system-owned / server-side**. Modelo final:
+
+```text
+Authorize final aprobado
+        ↓  Backend
+Permission → Aprobada
+        ↓  (misma transacción, resolveAuthorizeLinkTx)
+4 CheckPoints  (SALIDA/Dorm, SALIDA/Caseta, RETORNO/Caseta, RETORNO/Dorm; todos 'Pendiente')
+        ↓
+Flutter solo refresca
+```
+
+- **`POST /checks` → RETIRED / REMOVED (404).** Se eliminó la ruta, el controlador `createChecksPermission`
+  y el repo `createCheckPoint`. **Ninguna API pública** puede insertar `CheckPoints`.
+- **Creación autoritativa:** `ensureCheckPointsTx` dentro de `resolveAuthorizeLinkTx`, SOLO en la
+  transición real `Permission: Pendiente → Aprobada` (no en reintentos ni cadenas ya resueltas). Points
+  resueltos por catálogo (`Point.IdExit = IdTipoSalida`); catálogo incompleto →
+  `CHECKPOINT_CONFIGURATION_INCOMPLETE` + **ROLLBACK** (nunca Permission=Aprobada sin sus 4 checks).
+- **Idempotencia:** `UNIQUE(IdPermission, IdPoint, Accion)` (migración `014`) — clave natural correcta
+  (cada Point aparece en SALIDA y RETORNO). Verificación histórica: 31 aprobados, todos con 4 checks, 0 duplicados.
+- **Commits:** Backend C1 `b1c7190` (auto-creación + UNIQUE + puente idempotente); Frontend migración
+  `4be285b` (0 consumidores de `POST /checks`); Backend C2 (este) `POST /checks → 404`.
+- **E2E real:** pendiente como **deployment gate** (no como código pendiente).
+
+Fuera de este cierre (tareas separadas, sin tocar): GET `checks*` anónimos, `GET /getPoints`, BOLA/IDOR,
+`PUT /checks/:id`, CheckerGrant, scopes, FCM, ADMIN/SUPERADMIN.
 
 # Fuera de alcance de esta tarea (no mezclar)
 Revisión documental (7.3), BOLA de lecturas — solo se referencian en la matriz endpoint→permiso

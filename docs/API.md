@@ -206,7 +206,7 @@ Todos responden `200` con `null` cuando no hay pendientes.
 
 | Método y ruta | Auth | Descripción |
 |---|---|---|
-| `POST /checks` | — | Crea un checkpoint. Body `{ Accion, IdPoint, IdPermission }` → `{ Id, StatusCheck: 'Pendiente', ... }`. Lo llama el cliente al aprobar un permiso (4 por salida). |
+| ~~`POST /checks`~~ | — | **RETIRADO (Checks Hardening C2)** → 404. Los 4 CheckPoints se crean **server-side** al transicionar `Permission → Aprobada` (`ensureCheckPointsTx`). Ninguna API pública inserta CheckPoints. |
 | `GET /checksDormitorio/:Id` | — | Paso 1 pendientes. `:Id` = **IdDormitorio**. Permisos `Aprobada`, `FechaSalida` ≤ hoy. |
 | `GET /checksVigilancia` | — | Paso 2 pendientes (caseta-salida) cuyo paso 1 ya está `Confirmada`. |
 | `GET /checksVigilanciaRegreso` | — | Paso 3 pendientes (caseta-retorno) con salida de caseta confirmada. |

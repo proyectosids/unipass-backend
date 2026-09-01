@@ -1,5 +1,4 @@
 import {
-    createCheckPoint,
     findPendingChecksDormitorioSalida,
     findPendingChecksDormitorioRetorno,
     findPendingChecksVigilanciaSalida,
@@ -21,29 +20,9 @@ const pasoDe = (accion, nombrePunto) => {
     return null;
 };
 
-// DEPRECATED / TRANSITIONAL (Checks Hardening C1): POST /checks. La creación autoritativa de los 4
-// CheckPoints es server-side al aprobarse el permiso (ver ensureCheckPointsTx en authorize.repo). Este
-// endpoint se conserva SOLO como puente de compatibilidad mientras Flutter migra; es IDEMPOTENTE (no
-// duplica: si el (IdPermission, IdPoint, Accion) ya existe, devuelve el existente con `existing:true`).
-// El sistema NO depende de él. Se RETIRA en C2 tras migrar Flutter.
-export const createChecksPermission = async (req, res) => {
-    try {
-        const { Accion, IdPoint, IdPermission } = req.body || {};
-        const r = await createCheckPoint({ accion: Accion, idPoint: IdPoint, idPermission: IdPermission });
-        res.json({
-            Id: r.id,
-            StatusCheck: 'Pendiente',
-            Accion,
-            IdPoint,
-            IdPermission,
-            Observaciones: 'Ninguna',
-            existing: !r.created // true si ya existía (idempotente): NO se duplicó
-        });
-    } catch (error) {
-        console.error('Error en POST /checks (transicional):', error.message);
-        res.status(500).json({ error: 'Error al crear el check' });
-    }
-};
+// RETIRADO (Checks Hardening C2): createChecksPermission / POST /checks fue ELIMINADO. La creación de
+// los 4 CheckPoints es interna del backend (ensureCheckPointsTx en authorize.repo, al transicionar
+// Permission -> Aprobada). No existe API pública que inserte CheckPoints.
 
 export const getChecksDormitorio = async (req, res) => {
     try {
