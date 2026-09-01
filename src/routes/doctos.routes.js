@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { verifyToken } from "../Middleware/verifityToken.js";
-import { deleteFileDoc, getDocumentsByUser, saveDocument, getProfile, uploadProfile, getExpedientesAlumnos, getArchivosAlumno, rejectDocument, rejectDocumentByIdDoctos } from "../controllers/doctos.controller.js";
+import { deleteFileDoc, getDocumentsByUser, saveDocument, getProfile, uploadProfile, getExpedientesAlumnos, getArchivosAlumno, rejectDocumentByIdDoctos } from "../controllers/doctos.controller.js";
 import { Subirimagen } from "../Middleware/storage.js";
 import multer from "multer";
 
@@ -32,8 +32,7 @@ router.get("/getArchivos/:Dormitorio/:Nombre?/:Apellidos?/:Matricula?", getArchi
 // máquina de estados (Pendiente->Rechazado) + AuditLog server-side. Body { motivo, comentario? }.
 router.put("/documents/:idDoctos/reject", verifyToken, rejectDocumentByIdDoctos);
 
-// LEGADO CONTENIDO (DEPRECATED — REMOVE D1-C): ahora requiere Bearer y aplica la misma lógica segura;
-// el MatriculaPreceptor del body se IGNORA. Puente mientras Flutter migra al endpoint de arriba.
-router.put("/doctosMul/reject/:Id", verifyToken, rejectDocument);
+// RETIRADO (Task 7.3 D1-C2): PUT /doctosMul/reject/:Id ELIMINADO → 404. El único contrato de rechazo
+// es PUT /documents/:idDoctos/reject (arriba).
 
 export default router;

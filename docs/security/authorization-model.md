@@ -480,12 +480,31 @@ documentationComplete = todos los requeridos PRESENTES  AND  ninguno StatusRevis
   contradecía la evaluación en 1. **No se hizo backfill** (el gate usa la evaluación viva; el recálculo
   forward mantiene la cache; los 3 no-resolubles son anomalías de dato a revisar antes de normalizar).
 
-### Follow-ups (NO en D1-A.2)
-- **Backfill de `Documentacion`** (cache sync one-time): opcional; **no** ejecutado (3 dorms no-resolubles
-  a revisar). El gate no depende de la cache, así que no es urgente.
-- **D2 — lecturas documentales** (`GET /doctos`, `/doctosProfile`, `/getExpediente`, `/getArchivos`) siguen **anónimas**.
-- **D1-C** — retirar los bridges legados (`PUT /doctosMul/reject/:Id`, `PUT /Documentacion/:Matricula`)
-  tras confirmar 0 consumidores Flutter. **Task 7.3 NO CLOSED.**
+## Task 7.3 — D1-C2: retiro definitivo de bridges de ESCRITURA → `Task 7.3 D1 WRITES SECURITY = CLOSED ✅`
+
+Frontend migró (D1-C1, `0eca9c4`, 0 consumidores de los legados). Se eliminan los puentes.
+
+- **RETIRADOS → 404** (con o sin Bearer): `PUT /Documentacion/:Matricula`, `PUT /doctosMul/reject/:Id`,
+  `PUT /statusRevision/:Id` (este ya en D1-A). Eliminados sus controladores + `updateDocumentacion` (repo).
+- **Superficie WRITE documental final (0 escrituras anónimas):**
+  - SELF alumno: `POST /doctosMul`, `PUT /doctosMul/updateProfile`, `DELETE /doctosMul/:Id` (Bearer + ownership token).
+  - REVIEW preceptor: `PUT /documents/:idDoctos/reject` (Bearer + PRECEPTOR + scope de dormitorio + state machine + AuditLog + FCM/socket post-commit).
+- **`LoginUniPass.Documentacion`** solo se escribe server-side (`recalcDocumentacionInTx`); ningún endpoint
+  acepta `Documentacion`/`StatusDoc` del cliente. La columna y los helpers de evaluación se conservan.
+
+```text
+Alumno upload/delete → mutación documental → recalc Documentacion (server-side)
+Preceptor reject → Bearer + PRECEPTOR + scope server-side → Pendiente→Rechazado → recalc → AuditLog → FCM/socket post-commit
+```
+
+**Estado: `Task 7.3 D1 WRITES SECURITY = CLOSED ✅`** (0 escrituras anónimas; bridges retirados;
+Documentacion solo server-computed; gate server-side en `POST /permission`). **Task 7.3 = NOT CLOSED**
+(pendiente **D2 — lecturas documentales** `GET /doctos`/`/doctosProfile`/`/getExpediente`/`/getArchivos`).
+
+### Follow-ups
+- **Backfill de `Documentacion`** (cache sync): opcional, **no** ejecutado (3 dorms no-resolubles: null/5/6
+  — data-quality gate separado, no normalizar sin regla institucional). El gate usa la evaluación viva.
+- **D2 — lecturas documentales** siguen **anónimas**.
 
 # BOLA/IDOR R1 (usuarios/credenciales/tokens) = CLOSED
 

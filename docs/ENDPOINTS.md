@@ -25,7 +25,7 @@ Contrato OTP externo en [otp-service-contract.md](otp-service-contract.md).
 | PUT | `/cambiarCargo/:Matricula` | — | Asigna cargo delegado. Body `{ IdCargoDelegado }`. |
 | PUT | `/terminarCargo/:Matricula` | — | Termina cargo + borra Position. |
 | PUT | `/TokenDispositivo/:Matricula` | 🔒 | **Task 7.2**: matrícula del token (path ignorado). Body `{ TokenCFM }`. |
-| PUT | `/Documentacion/:Matricula` | 🔒 | **CONTENIDO (7.3 D1-A, DEPRECATED)**: Bearer; ignora Matricula/StatusDoc; devuelve Documentacion propia. |
+| ~~PUT~~ | ~~`/Documentacion/:Matricula`~~ | — | **RETIRADO (7.3 D1-C2)** → 404. `Documentacion` es cache server-computed. |
 
 ## Contraseña (`user.routes.js`, `password.routes.js`)
 | Método | Ruta | Auth | Propósito |
@@ -104,8 +104,8 @@ Contrato OTP externo en [otp-service-contract.md](otp-service-contract.md).
 | GET | `/getExpediente/:IdDormi` | — | Expedientes por dormitorio. |
 | GET | `/getArchivos/:Dormitorio/:Nombre?/:Apellidos?/:Matricula?` | — | Archivos filtrados. |
 | ~~PUT~~ | ~~`/statusRevision/:Id`~~ | — | **RETIRADO (7.3 D1-A)** → 404. |
-| PUT | `/documents/:idDoctos/reject` | 🔒 | **7.3 D1-A**: rechazo seguro (PRECEPTOR del dorm; state machine; AuditLog). Body `{ motivo, comentario? }`. |
-| PUT | `/doctosMul/reject/:Id` | 🔒 | **LEGADO CONTENIDO (DEPRECATED — REMOVE D1-C)**: Bearer; `MatriculaPreceptor` ignorado. |
+| PUT | `/documents/:idDoctos/reject` | 🔒 | **7.3 D1-A (ÚNICO rechazo)**: seguro (PRECEPTOR del dorm; state machine; AuditLog). Body `{ motivo, comentario? }`. |
+| ~~PUT~~ | ~~`/doctosMul/reject/:Id`~~ | — | **RETIRADO (7.3 D1-C2)** → 404. |
 
 ## Dormitorios, puntos, cargos (`bedroom/point/position.routes.js`)
 | Método | Ruta | Auth | Propósito |

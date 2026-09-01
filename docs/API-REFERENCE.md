@@ -117,7 +117,7 @@ seguros** `IdLogin, Matricula, Nombre, Apellidos, TipoUser` + `ExisteEnPosition`
 | `PUT /terminarCargo/:Matricula` | — | `{ "message": "Estado actualizado y registro eliminado exitosamente" }` (limpia `IdCargoDelegado` **y** borra la fila de `Position`) |
 | ~~`GET /VerToken/:Matricula`~~ | — | **RETIRADO (BOLA/IDOR R1-A)** → 404. Exponía `TokenCFM`; la resolución FCM (incl. suplencia `Position`) es interna server-side. |
 | `PUT /TokenDispositivo/:Matricula` 🔒 | `{ "TokenCFM": "fcm_token..." }` | Registra el token del **propio** dispositivo (matrícula = token). |
-| `PUT /Documentacion/:Matricula` 🔒 | — (ignora `StatusDoc`) | **CONTENIDO (7.3 D1-A, DEPRECATED — REMOVE D1-C)**: Bearer; ignora `:Matricula`/`StatusDoc`; devuelve `{ Documentacion }` del usuario propio (SELF), sin escritura arbitraria. |
+| ~~`PUT /Documentacion/:Matricula`~~ | — | **RETIRADO (7.3 D1-C2)** → 404. `Documentacion` es cache server-computed; ningún endpoint la fija desde el cliente. |
 
 Errores: 400 `{ message: "El registro no tiene un IdCargoDelegado válido" }` (terminarCargo), 404 `{ message: "Dato no encontrado" }`.
 
@@ -529,7 +529,8 @@ Pipeline server-side: `verifyToken` → `TipoUser='PRECEPTOR'` (403 `FORBIDDEN_D
 todo en una transacción. `404 DOCUMENT_NOT_FOUND`. Post-commit best-effort: socket `document_rejected` +
 FCM al alumno (destinatario/token resueltos server-side desde `Doctos.IdLogin`).
 
-**`PUT /doctosMul/reject/:Id`** — LEGADO **CONTENIDO** (DEPRECATED — REMOVE D1-C): ahora Bearer + la misma
+**~~`PUT /doctosMul/reject/:Id`~~** — **RETIRADO (7.3 D1-C2)** → 404. Único contrato de rechazo:
+`PUT /documents/:idDoctos/reject`. (Descripción histórica del bridge:) ahora Bearer + la misma
 lógica segura; `MatriculaPreceptor` del body **ignorado**; localiza por `(IdLogin path, IdDocumento body)`.
 
 ---

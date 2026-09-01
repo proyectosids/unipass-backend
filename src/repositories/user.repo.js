@@ -160,15 +160,10 @@ export const updateUserPasswordById = (idLogin, hashedPassword) =>
 // consumeResetAndUpdatePasswordTx (por IdLogin ligado a un resetToken válido). No reintroducir una
 // función genérica correo -> contraseña accesible fuera de esos flujos.
 
-export const updateDocumentacion = (matricula, statusDoc) =>
-    withConnection(async (pool) => {
-        const result = await pool
-            .request()
-            .input('Matricula', sql.VarChar, matricula)
-            .input('StatusDoc', sql.Int, statusDoc)
-            .query('UPDATE UNIPASS.LoginUniPass SET Documentacion = @StatusDoc WHERE Matricula = @Matricula');
-        return result.rowsAffected[0] > 0;
-    });
+// RETIRADO (Task 7.3 D1-C2): updateDocumentacion(matricula, statusDoc) — permitía fijar
+// LoginUniPass.Documentacion (0/1) por matrícula desde el cliente (usado por el eliminado
+// PUT /Documentacion/:Matricula). La columna es cache server-computed: solo la escribe
+// recalcDocumentacionInTx / recalculateDocumentationStatus (doctos.repo). No reintroducir.
 
 export const updateTokenFCM = (matricula, tokenCFM) =>
     withConnection(async (pool) => {

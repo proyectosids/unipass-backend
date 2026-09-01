@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { verifyToken } from '../Middleware/verifityToken.js';
-import { getMe, loginUser, putMePassword, updateCargo, endCargo, registerTokenFCM, documentComplet, verifySessionToken, refreshTokenController, logoutUser } from "../controllers/user.controllers.js";
+import { getMe, loginUser, putMePassword, updateCargo, endCargo, registerTokenFCM, verifySessionToken, refreshTokenController, logoutUser } from "../controllers/user.controllers.js";
 
 const router = Router();
 
@@ -45,8 +45,7 @@ router.put("/terminarCargo/:Matricula", endCargo);
 // Task 7.2: identidad del token (matrícula del path ignorada). Un 403 aquí no debe bloquear login.
 router.put("/TokenDispositivo/:Matricula", verifyToken, registerTokenFCM);
 
-// CONTENIDO (Task 7.3 D1-A · DEPRECATED — REMOVE D1-C): ahora exige Bearer y NO permite fijar 0/1
-// arbitrario (:Matricula y StatusDoc se ignoran); devuelve el Documentacion actual del usuario (SELF).
-router.put('/Documentacion/:Matricula', verifyToken, documentComplet);
+// RETIRADO (Task 7.3 D1-C2): PUT /Documentacion/:Matricula ELIMINADO → 404. La columna
+// LoginUniPass.Documentacion solo se modifica server-side (recalc en las mutaciones documentales).
 
 export default router;

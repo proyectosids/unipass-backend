@@ -139,29 +139,18 @@ d('Task 7.3 D1-A - rechazo documental seguro (integración)', () => {
         expect(notifyDocumentRejection).toHaveBeenCalled();
     });
 
-    // legacy reject contenido
-    it('legacy /doctosMul/reject/:Id sin token -> 401', async () => {
-        const id = await crearDoc({ idLogin: alumnoA.IdLogin });
-        expect((await request(app).put(`/doctosMul/reject/${alumnoA.IdLogin}`).send({ IdDocumento: 1, Motivo: 'X', MatriculaPreceptor: '999999' })).status).toBe(401);
-        expect((await statusDoc(id)).StatusRevision).toBe('Pendiente');
-    });
-    it('legacy reject con Bearer PRECEPTOR: 200 e ignora MatriculaPreceptor forjada', async () => {
+    // ---- RETIRO DEFINITIVO de bridges legacy (D1-C2) -> 404 (con y sin Bearer) ----
+    it('PUT /doctosMul/reject/:Id retirado -> 404 sin token y con PRECEPTOR; no cambia el documento', async () => {
         const id = await crearDoc({ idLogin: alumnoA.IdLogin, idDocumento: 5 });
-        const r = await request(app).put(`/doctosMul/reject/${alumnoA.IdLogin}`).set('Authorization', `Bearer ${tPreA}`)
-            .send({ IdDocumento: 5, Motivo: 'X', MatriculaPreceptor: '999999' });
-        expect(r.status).toBe(200);
-        expect(String((await statusDoc(id)).RechazadoPor)).toBe(String(preA.Matricula));
+        expect((await request(app).put(`/doctosMul/reject/${alumnoA.IdLogin}`).send({ IdDocumento: 5, Motivo: 'X', MatriculaPreceptor: '999999' })).status).toBe(404);
+        expect((await request(app).put(`/doctosMul/reject/${alumnoA.IdLogin}`).set('Authorization', `Bearer ${tPreA}`).send({ IdDocumento: 5, Motivo: 'X' })).status).toBe(404);
+        expect((await statusDoc(id)).StatusRevision).toBe('Pendiente'); // intacto
     });
-
-    // Documentacion contenido
-    it('PUT /Documentacion sin token -> 401', async () => {
-        expect((await request(app).put(`/Documentacion/${alumnoB.Matricula}`).send({ StatusDoc: 1 })).status).toBe(401);
-    });
-    it('PUT /Documentacion con token: no fija StatusDoc arbitrario; víctima intacta', async () => {
+    it('PUT /Documentacion/:Matricula retirado -> 404 (con y sin token); víctima intacta', async () => {
         const antes = (await pool.request().input('id', sql.Int, alumnoB.IdLogin).query('SELECT Documentacion FROM UNIPASS.LoginUniPass WHERE IdLogin=@id')).recordset[0].Documentacion;
-        const r = await request(app).put(`/Documentacion/${alumnoB.Matricula}`).set('Authorization', `Bearer ${tAlumnoA}`).send({ StatusDoc: 1 });
-        expect(r.status).toBe(200);
+        expect((await request(app).put(`/Documentacion/${alumnoB.Matricula}`).send({ StatusDoc: 1 })).status).toBe(404);
+        expect((await request(app).put(`/Documentacion/${alumnoB.Matricula}`).set('Authorization', `Bearer ${tAlumnoA}`).send({ StatusDoc: 1 })).status).toBe(404);
         const despues = (await pool.request().input('id', sql.Int, alumnoB.IdLogin).query('SELECT Documentacion FROM UNIPASS.LoginUniPass WHERE IdLogin=@id')).recordset[0].Documentacion;
-        expect(despues).toBe(antes); // no cambió al otro usuario
+        expect(despues).toBe(antes);
     });
 });

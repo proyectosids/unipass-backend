@@ -3,7 +3,6 @@
 import { hashData, VerifyHashData } from '../util/hashData.js';
 import { validatePassword } from '../util/passwordPolicy.js';
 import { toSafeUser } from '../util/safeUser.js';
-import { recalculateDocumentationStatus } from '../repositories/doctos.repo.js';
 import {
     generateAccessToken,
     generateRefreshToken,
@@ -285,18 +284,8 @@ export const putMePassword = async (req, res) => {
 // - SearchTokenFCM (GET /VerToken/:Matricula): exponía TokenCFM (token de push) de cualquier matrícula.
 //   Sin consumidores HTTP; la resolución FCM es INTERNA (notificationService.findTokenFCMByMatricula). → 404.
 
-// CONTENIDO (Task 7.3 D1-A · DEPRECATED — REMOVE D1-C): PUT /Documentacion/:Matricula. Requiere Bearer;
-// `:Matricula` y `StatusDoc` se IGNORAN (sin escritura arbitraria de 0/1). D1-A.2: RECALCULA la
-// completitud server-side (misma fuente de verdad) para el usuario autenticado (SELF) y devuelve el
-// valor calculado. No confía en el cliente.
-export const documentComplet = async (req, res) => {
-    try {
-        const documentacion = await recalculateDocumentationStatus(req.user.id);
-        return res.json({ Documentacion: documentacion });
-    } catch (error) {
-        res.status(500).json({ error: error.message });
-    }
-};
+// RETIRADO (Task 7.3 D1-C2): documentComplet / PUT /Documentacion/:Matricula ELIMINADO. La columna
+// Documentacion es cache server-computed (recalc en las mutaciones documentales); el cliente nunca la fija.
 
 export const registerTokenFCM = async (req, res) => {
     try {

@@ -276,20 +276,5 @@ export const rejectDocumentByIdDoctos = async (req, res) => {
     }
 };
 
-// LEGADO CONTENIDO (Task 7.3 D1-A · DEPRECATED — REMOVE D1-C): PUT /doctosMul/reject/:Id. Ahora requiere
-// Bearer y usa la MISMA lógica segura (actor del token, PRECEPTOR, scope, state machine). El
-// `MatriculaPreceptor` del body se IGNORA. Localiza el doc por (IdLogin=path, IdDocumento=body) solo como
-// puente mientras Flutter migra a PUT /documents/:idDoctos/reject.
-export const rejectDocument = async (req, res) => {
-    try {
-        const idLogin = parseInt(req.params.Id, 10);
-        const { IdDocumento, Motivo, Comentario } = req.body || {};
-        if (!idLogin || !IdDocumento) return res.status(400).json({ message: 'IdLogin(path) e IdDocumento son obligatorios', code: 'MISSING_FIELDS' });
-        const doc = await findDocumentByLoginAndType(idLogin, IdDocumento);
-        if (!doc) return res.status(404).json({ message: 'Documento no encontrado', code: 'DOCUMENT_NOT_FOUND' });
-        await ejecutarRechazo(req, res, { idDoctos: doc.IdDoctos, motivo: Motivo, comentario: Comentario });
-    } catch (error) {
-        console.error('Error en rejectDocument (legacy):', error);
-        if (!res.headersSent) res.status(500).json({ message: 'Error al rechazar el documento', code: 'SERVER_ERROR' });
-    }
-};
+// RETIRADO (Task 7.3 D1-C2): rejectDocument / PUT /doctosMul/reject/:Id ELIMINADO. El único contrato de
+// rechazo es PUT /documents/:idDoctos/reject (rejectDocumentByIdDoctos), con la misma lógica segura.
