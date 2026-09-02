@@ -104,10 +104,10 @@ Contrato OTP externo en [otp-service-contract.md](otp-service-contract.md).
 | GET | `/documents/review/students/:idLogin/documents` | 🔒 | **7.3 D2-A**: docs de un alumno de SU dorm (PRECEPTOR). |
 | GET | `/users/:idLogin/profile-photo` | 🔒 | **7.3 D2-A**: foto de perfil (IdDocumento=6). SELF / PRECEPTOR(mismo dorm) / CHECKER(grant). |
 | GET | `/files/:idDoctos` | 🔒 | **7.3 D2-B2**: descarga/stream del **binario** por PK. Política por IdDocumento (foto=6 admite CHECKER; privados 1-5/7 solo SELF/PRECEPTOR mismo dorm). Anti path-traversal; `inline`; `Cache-Control: private, no-store`; sin redirect a `/uploads`. |
-| GET | `/doctosProfile/:id?IdDocumento=6` | 🔒 | **7.3 D2-A (bridge, DEPRECATED D2-C)**: solo foto (IdDocumento=6); misma política que `/users/:idLogin/profile-photo`. |
-| GET | `/doctos/:Id` | 🔒 | **7.3 D2-A (bridge, DEPRECATED D2-C)**: SELF-only (`:Id`=token → si no 403). |
-| GET | `/getExpediente/:IdDormi` | 🔒 | **7.3 D2-A (bridge, DEPRECATED D2-C)**: PRECEPTOR; dorm forzado al del token (sin `dorm=5`). |
-| GET | `/getArchivos/:Dormitorio/:Nombre?/:Apellidos?/:Matricula?` | 🔒 | **7.3 D2-A (bridge, DEPRECATED D2-C)**: PRECEPTOR; dorm forzado al del token. |
+| ~~GET~~ | ~~`/doctosProfile/:id`~~ | — | **RETIRADO (7.3 D2-C)** → 404. Usar `/users/:idLogin/profile-photo` + `/files/:idDoctos`. |
+| ~~GET~~ | ~~`/doctos/:Id`~~ | — | **RETIRADO (7.3 D2-C)** → 404. Usar `/me/documents` + `/files/:idDoctos`. |
+| ~~GET~~ | ~~`/getExpediente/:IdDormi`~~ | — | **RETIRADO (7.3 D2-C)** → 404. Usar `/documents/review/students`. |
+| ~~GET~~ | ~~`/getArchivos/:Dormitorio/...`~~ | — | **RETIRADO (7.3 D2-C)** → 404. Usar `/documents/review/students/:idLogin/documents`. |
 | ~~PUT~~ | ~~`/statusRevision/:Id`~~ | — | **RETIRADO (7.3 D1-A)** → 404. |
 | PUT | `/documents/:idDoctos/reject` | 🔒 | **7.3 D1-A (ÚNICO rechazo)**: seguro (PRECEPTOR del dorm; state machine; AuditLog). Body `{ motivo, comentario? }`. |
 | ~~PUT~~ | ~~`/doctosMul/reject/:Id`~~ | — | **RETIRADO (7.3 D1-C2)** → 404. |

@@ -44,8 +44,13 @@ Authorization: Bearer <access token>
   mismo dormitorio. Un checker que ve la foto **no** puede abrir estos (recibirá `403`). No ofrezcas la
   acción a roles que recibirán 403.
 
-## Cierre posterior (D2-C, tras D2-B3)
+## Cierre D2-C — HECHO ✅
 
-Cuando D2-B3 esté desplegado y **0 consumidores** usen `/uploads/*`, el backend eliminará
-`express.static('public')` y `GET /uploads/<archivo>` directo pasará a `404`. A partir de ahí el único
-acceso a binarios es `GET /files/:idDoctos`.
+D2-B3 desplegado (`61f28bd`, 0 dependencia de `/uploads`). El backend **ya ejecutó D2-C**:
+- `express.static('public')` **eliminado** → `GET /uploads/<archivo>` = **404** (con o sin token).
+- Bridges GET legacy (`/doctos/:Id`, `/doctosProfile/:id`, `/getExpediente`, `/getArchivos`) **retirados** → 404.
+- Único acceso a binarios: **`GET /files/:idDoctos`** (Bearer).
+- `DIRECT_FILE_ACCESS_BYPASS = CLOSED ✅`; `Task 7.3 DOCUMENT SECURITY = CLOSED ✅`.
+
+> Nota: el **E2E funcional real en dispositivo** no se certifica desde Backend (entorno sin red reportado
+> por Frontend). Backend declara *contract/test gate complete*; la validación funcional en app es posterior.

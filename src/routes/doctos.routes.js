@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { verifyToken } from "../Middleware/verifityToken.js";
-import { deleteFileDoc, getDocumentsByUser, saveDocument, getProfile, uploadProfile, getExpedientesAlumnos, getArchivosAlumno, rejectDocumentByIdDoctos, getMyDocuments, getReviewStudents, getReviewStudentDocuments, getProfilePhoto, getFileByIdDoctos } from "../controllers/doctos.controller.js";
+import { deleteFileDoc, saveDocument, uploadProfile, rejectDocumentByIdDoctos, getMyDocuments, getReviewStudents, getReviewStudentDocuments, getProfilePhoto, getFileByIdDoctos } from "../controllers/doctos.controller.js";
 import { Subirimagen } from "../Middleware/storage.js";
 import multer from "multer";
 
@@ -25,13 +25,12 @@ router.get("/users/:idLogin/profile-photo", verifyToken, getProfilePhoto);
 // traversal; stream inline; sin redirect a /uploads. Contrato para Flutter D2-B3.
 router.get("/files/:idDoctos", verifyToken, getFileByIdDoctos);
 
-// ===== Bridges legacy CONTENIDOS (DEPRECATED — REMOVE D2-C). Ahora exigen Bearer + ownership/scope. =====
-
-// Bridge foto de perfil (?IdDocumento=6 obligatorio; misma política que /users/:idLogin/profile-photo).
-router.get("/doctosProfile/:id", verifyToken, getProfile);
-
-// Bridge SELF: :Id debe ser el IdLogin del token.
-router.get("/doctos/:Id", verifyToken, getDocumentsByUser);
+// RETIRADOS (Task 7.3 D2-C): los bridges de LECTURA legacy fueron ELIMINADOS → 404 (con o sin token).
+// Flutter (D2-B1/D2-B3) confirmó 0 consumidores. Los contratos definitivos son los de arriba:
+//   `GET /doctosProfile/:id`  -> usar `GET /users/:idLogin/profile-photo` + `GET /files/:idDoctos`
+//   `GET /doctos/:Id`         -> usar `GET /me/documents` + `GET /files/:idDoctos`
+//   `GET /getExpediente/:IdDormi` / `GET /getArchivos/...` -> usar `GET /documents/review/students[...]`
+// No se mantienen aliases ni redirects.
 
 // Subida y reemplazo (multipart, campo 'Archivo'; jpg/jpeg/png/pdf, max 50 MB)
 // Task 7.2: verifyToken ANTES de multer (no procesar archivo sin auth); IdLogin del body ignorado.
@@ -42,11 +41,8 @@ router.put("/doctosMul/updateProfile", verifyToken, Subirimagen.single('Archivo'
 // Borra doc propio (:Id del path ignorado, se usa token.id)
 router.delete("/doctosMul/:Id", verifyToken, deleteFileDoc);
 
-// Bridges de revisión CONTENIDOS (DEPRECATED — REMOVE D2-C): Bearer + PRECEPTOR + dorm forzado server-side
-// (:IdDormi/:Dormitorio debe coincidir con el dorm del actor; ya NO existe vista global dorm=5).
-router.get("/getExpediente/:IdDormi", verifyToken, getExpedientesAlumnos)
-
-router.get("/getArchivos/:Dormitorio/:Nombre?/:Apellidos?/:Matricula?", verifyToken, getArchivosAlumno);
+// RETIRADO (Task 7.3 D2-C): GET /getExpediente/:IdDormi y GET /getArchivos/... ELIMINADOS → 404.
+// Reemplazo: GET /documents/review/students y GET /documents/review/students/:idLogin/documents.
 
 // RETIRADO (Task 7.3 D1-A): PUT /statusRevision/:Id (aprobación anónima, 0 consumidores) -> 404.
 

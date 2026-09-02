@@ -27,8 +27,11 @@ app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
 
-// Servir archivos estáticos
-app.use(express.static('public'));
+// Task 7.3 D2-C: RETIRADO `app.use(express.static('public'))`. `public/` solo contenia `uploads/` (+ .gitignore)
+// y Flutter (D2-B3, `61f28bd`) ya no depende de `/uploads/*`. Los binarios documentales se sirven UNICAMENTE
+// por `GET /files/:idDoctos` (Bearer + politica). El path fisico `public/uploads` sigue existiendo como
+// ALMACENAMIENTO interno (donde escribe multer y de donde lee /files), pero ya NO se expone por HTTP.
+// Cierra DIRECT_FILE_ACCESS_BYPASS: `GET /uploads/<archivo>` -> 404 (con o sin token).
 
 // Documentación interactiva (Swagger UI) + spec cruda OpenAPI
 app.get('/api-docs.json', (req, res) => res.json(openapiSpec));

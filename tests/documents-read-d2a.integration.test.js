@@ -109,19 +109,8 @@ d('Task 7.3 D2-A - lecturas documentales seguras (integración)', () => {
         });
     });
 
-    // ===== §15 bridge SELF: GET /doctos/:Id (contenido) =====
-    describe('GET /doctos/:Id (bridge SELF)', () => {
-        it('sin token -> 401', async () => expect((await g(`/doctos/${alumnoA.IdLogin}`)).status).toBe(401));
-        it('alumnoA lee su propio :Id -> 200', async () => {
-            const r = await g(`/doctos/${alumnoA.IdLogin}`, tAlumnoA);
-            expect(r.status).toBe(200); assertNoSensitive(r.body);
-        });
-        it('alumnoA intenta leer el :Id de alumnoB -> 403 FORBIDDEN_OWNERSHIP y NO filtra documentos', async () => {
-            const r = await g(`/doctos/${alumnoB.IdLogin}`, tAlumnoA);
-            expect(r.status).toBe(403); expect(r.body.code).toBe('FORBIDDEN_OWNERSHIP');
-            expect(Array.isArray(r.body)).toBe(false); // no lista de docs ajena
-        });
-    });
+    // NOTA: los bridges GET legacy (/doctos/:Id, /doctosProfile/:id, /getExpediente, /getArchivos) fueron
+    // RETIRADOS en D2-C. Su retiro (404) se prueba en documents-read-d2c.integration.test.js.
 
     // ===== §16 GET /documents/review/students (PRECEPTOR) =====
     describe('GET /documents/review/students', () => {
@@ -201,57 +190,6 @@ d('Task 7.3 D2-A - lecturas documentales seguras (integración)', () => {
         });
     });
 
-    // ===== §18 bridge foto: GET /doctosProfile/:id?IdDocumento=6 (contenido) =====
-    describe('GET /doctosProfile/:id (bridge foto de perfil)', () => {
-        it('sin token -> 401', async () => expect((await g(`/doctosProfile/${alumnoA.IdLogin}?IdDocumento=6`)).status).toBe(401));
-        it('SELF con IdDocumento=6 -> 200', async () => {
-            const r = await g(`/doctosProfile/${alumnoA.IdLogin}?IdDocumento=6`, tAlumnoA);
-            expect(r.status).toBe(200); expect(r.body.IdDocumento).toBe(6);
-        });
-        it('no puede usarse como lector genérico: IdDocumento=1 -> 403', async () => {
-            const r = await g(`/doctosProfile/${alumnoA.IdLogin}?IdDocumento=1`, tAlumnoA);
-            expect(r.status).toBe(403); expect(r.body.code).toBe('FORBIDDEN_DOCUMENT_SCOPE');
-        });
-        it('sin IdDocumento -> 403 (no default a lector genérico)', async () => {
-            expect((await g(`/doctosProfile/${alumnoA.IdLogin}`, tAlumnoA)).status).toBe(403);
-        });
-        it('misma política: alumno ajeno -> 403', async () => {
-            expect((await g(`/doctosProfile/${alumnoA.IdLogin}?IdDocumento=6`, tAlumnoB)).status).toBe(403);
-        });
-    });
-
-    // ===== §6/§9 bridges de revisión CONTENIDOS =====
-    describe('GET /getExpediente/:IdDormi (bridge contenido)', () => {
-        it('sin token -> 401', async () => expect((await g(`/getExpediente/${DORM_A}`)).status).toBe(401));
-        it('ALUMNO -> 403 FORBIDDEN_DOCUMENT_REVIEWER', async () => {
-            expect((await g(`/getExpediente/${DORM_A}`, tAlumnoA)).body.code).toBe('FORBIDDEN_DOCUMENT_REVIEWER');
-        });
-        it('preA pasando IdDormi=5 (intento global) -> 403 FORBIDDEN_DOCUMENT_SCOPE (sin dorm=5)', async () => {
-            const r = await g('/getExpediente/5', tPreA);
-            expect(r.status).toBe(403); expect(r.body.code).toBe('FORBIDDEN_DOCUMENT_SCOPE');
-        });
-        it('preB pasando el dorm de A -> 403 FORBIDDEN_DOCUMENT_SCOPE', async () => {
-            expect((await g(`/getExpediente/${DORM_A}`, tPreB)).body.code).toBe('FORBIDDEN_DOCUMENT_SCOPE');
-        });
-        it('preA con su propio dorm -> 200', async () => {
-            expect((await g(`/getExpediente/${DORM_A}`, tPreA)).status).toBe(200);
-        });
-    });
-    describe('GET /getArchivos/:Dormitorio (bridge contenido)', () => {
-        it('sin token -> 401', async () => expect((await g(`/getArchivos/${DORM_A}`)).status).toBe(401));
-        it('preB pasando el dorm de A -> 403 FORBIDDEN_DOCUMENT_SCOPE', async () => {
-            expect((await g(`/getArchivos/${DORM_A}`, tPreB)).body.code).toBe('FORBIDDEN_DOCUMENT_SCOPE');
-        });
-        it('preA con su propio dorm -> 200 (o 404 si sin coincidencias), nunca datos de otro dorm', async () => {
-            const r = await g(`/getArchivos/${DORM_A}`, tPreA);
-            expect([200, 404]).toContain(r.status);
-            if (r.status === 200) assertNoSensitive(r.body);
-        });
-    });
-
-    // ===== §19 GET /doctos (sin args) confirmado muerto =====
-    it('GET /doctos (sin :Id) -> 404 (endpoint muerto)', async () => {
-        expect((await g('/doctos')).status).toBe(404);
-        expect((await g('/doctos', tAlumnoA)).status).toBe(404);
-    });
+    // El retiro (404) de /doctosProfile/:id, /getExpediente/:IdDormi, /getArchivos/... y /doctos
+    // se prueba en documents-read-d2c.integration.test.js (D2-C).
 });

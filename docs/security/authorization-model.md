@@ -662,3 +662,75 @@ D2-B3) es:
 (1) el binario sigue accesible por `/uploads/*` sin auth hasta D2-C — **aceptado temporalmente y explícito**;
 (2) `flutter_cached_pdfview` cachea el PDF en disco del dispositivo tras descargarlo autenticado (fuera del
 control del backend; se documenta para D2-B3).
+
+# Task 7.3 — D2-C: cierre final de lectura documental + `DIRECT_FILE_ACCESS_BYPASS = CLOSED ✅`
+
+Bloque final de Task 7.3. Flutter (D2-B3, `61f28bd`) migró **todos** los consumidores binarios a `IdDoctos`
+(`Flutter dependency on public /uploads = 0`). Se apaga la exposición estática y se retiran los bridges.
+
+## 1. Static retirado
+
+- **ELIMINADO** `app.use(express.static('public'))` (`src/app.js`). No se sustituye por otro static de
+  uploads ni por excepción pública para fotos. `public/` solo contenía `uploads/` + `.gitignore`.
+- El path físico **`public/uploads` sigue existiendo** como **almacenamiento interno**: multer sigue
+  escribiendo ahí (upload) y `GET /files/:idDoctos` lee de ahí (resuelto por `secureFilePath`). Es un
+  cambio de **exposición HTTP**, no una migración física: no se movieron archivos, no se renombró nada,
+  no se tocó `Doctos.Archivo`.
+
+## 2. Bridges GET legacy RETIRADOS → 404 (con o sin token)
+
+`GET /doctos/:Id`, `GET /doctosProfile/:id`, `GET /getExpediente/:IdDormi`,
+`GET /getArchivos/:Dormitorio/...` — **eliminados** (rutas + controladores). Sin aliases ni redirects.
+`GET /doctos` (sin `:Id`) sigue muerto (404). Grep de superficie: **0 rutas legacy ejecutables**,
+**0 exposición HTTP estática de `public/uploads`** (las referencias restantes son resolución interna del
+filesystem, el path de escritura del upload, tests de 404 y comentarios).
+
+## 3. Contratos documentales DEFINITIVOS
+
+```text
+Metadata                                   Binario
+GET /me/documents                          GET /files/:idDoctos
+GET /documents/review/students                 Authorization: Bearer
+GET /documents/review/students/:idLogin/documents      ↑ IdDoctos
+GET /users/:idLogin/profile-photo  ─────────────┘
+```
+
+- **`Doctos.Archivo` = localización interna de almacenamiento, ≠ URL pública** (ya no es utilizable por
+  Flutter; puede seguir en la metadata/DB por compatibilidad del modelo).
+- **`IdDoctos` = identificador externo del recurso binario.**
+- La foto de perfil (`IdDocumento=6`) **no** se volvió pública: sigue bajo SELF / PRECEPTOR scope / CHECKER
+  grant (política D2-B2). No hay `/uploads/profile/...` ni acceso anónimo.
+
+## 4. `DIRECT_FILE_ACCESS_BYPASS = CLOSED ✅`
+
+Probado (integración `documents-read-d2c`):
+
+```text
+GET /uploads/<filename>                 → 404   (sin token y con Bearer; Bearer no revive /uploads)
+GET /files/:idDoctos  + Bearer autoriz. → 200 bytes
+GET /files/:idDoctos  sin autorización  → 401/403
+```
+
+El helper anti path-traversal (`secureFilePath`) se mantiene intacto (no se simplificó al quitar el static);
+MIME (pdf/png/jpg/jpeg) y headers (`inline`, `Cache-Control: private, no-store`, sin redirect/Location/path)
+verificados tras el retiro. Cobertura de tipos `IdDocumento` 1-7 confirmada por `/files` (privados 1-5/7 →
+SELF/PRECEPTOR; foto 6 → +CHECKER; CHECKER sobre privados → 403).
+
+## Estado
+
+```text
+D1 writes                 CLOSED
+D2 metadata reads         CLOSED
+D2 binary reads           CLOSED
+legacy document APIs      RETIRED
+public uploads            CLOSED
+DIRECT_FILE_ACCESS_BYPASS CLOSED ✅
+```
+
+**`D2 DOCUMENT READS SECURITY = CLOSED ✅`** y **`Task 7.3 DOCUMENT SECURITY = CLOSED ✅`**.
+
+**No** implica que TODO el hardening de UniPass esté cerrado — **fuera de 7.3** (tareas posteriores):
+BOLA de **Permission/Authorize**, **checks reads (R2)**, backfill de `Documentacion`, data-quality de
+dormitorios null/5/6, ADMIN/SUPERADMIN. **E2E funcional real en dispositivo NO certificado desde Backend**
+(Flutter reportó entorno sin red): esto es *Backend contract/test gate complete*, la prueba funcional real
+es posterior al commit. Ver [[permissions-matrix]], [[task7-hardening-status]].

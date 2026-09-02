@@ -9,8 +9,6 @@ import {
     findDocumentById,
     deleteDocumentByIdAndRecalcTx,
     deleteDocumentByTypeAndRecalcTx,
-    findExpedientesByDormitorio,
-    findArchivosFiltered,
     rejectDocumentTx,
     findRejectNotificationContext,
     findReviewStudentsByDorm,
@@ -86,30 +84,9 @@ export const getProfilePhoto = async (req, res) => {
     } catch (error) { console.error('Error en getProfilePhoto:', error); res.status(500).json({ message: 'Error', code: 'SERVER_ERROR' }); }
 };
 
-// ===== Bridges legacy CONTENIDOS (DEPRECATED — REMOVE D2-C) =====
-
-// GET /doctosProfile/:id?IdDocumento=6 — bridge de foto de perfil. Solo IdDocumento=6; misma política.
-// No puede usarse como lector genérico (otro IdDocumento -> 403).
-export const getProfile = async (req, res) => {
-    try {
-        if (Number(req.query.IdDocumento) !== 6) return res.status(403).json({ message: 'Este endpoint solo sirve la foto de perfil (IdDocumento=6)', code: 'FORBIDDEN_DOCUMENT_SCOPE' });
-        const targetId = Number(req.params.id);
-        if (!(await puedeVerFotoPerfil(req, targetId))) return res.status(403).json({ message: 'No autorizado para ver esta foto', code: 'FORBIDDEN_DOCUMENT_SCOPE' });
-        return servirFotoPerfil(res, targetId);
-    } catch (error) { console.error('Error en getProfile (bridge):', error); res.status(500).json({ message: 'Error', code: 'SERVER_ERROR' }); }
-};
-
-// GET /doctos/:Id — bridge SELF: :Id debe ser el IdLogin del token.
-export const getDocumentsByUser = async (req, res) => {
-    try {
-        if (Number(req.params.Id) !== Number(req.user.id)) {
-            return res.status(403).json({ message: 'Solo puedes ver tus documentos', code: 'FORBIDDEN_OWNERSHIP' });
-        }
-        const documents = await findDocumentsByLogin(req.user.id);
-        if (documents.length === 0) return res.status(404).json({ message: 'No se encontraron archivos', code: 'DOC_NOT_FOUND' });
-        return res.json(documents);
-    } catch (error) { console.error('Error en /doctos/:Id (bridge):', error); res.status(500).json({ message: 'Error', code: 'SERVER_ERROR' }); }
-};
+// RETIRADOS (Task 7.3 D2-C): getProfile (GET /doctosProfile/:id) y getDocumentsByUser (GET /doctos/:Id)
+// ELIMINADOS → sus rutas devuelven 404. Reemplazos: GET /users/:idLogin/profile-photo + GET /files/:idDoctos
+// (foto/binario) y GET /me/documents (metadata SELF). Flutter (D2-B1/D2-B3) confirmó 0 consumidores.
 
 // ===== Task 7.3 D2-B2: entrega AUTENTICADA de binarios documentales por IdDoctos =====
 // GET /files/:idDoctos (Bearer). El recurso se identifica por PK (IdDoctos); el filename/Archivo/IdLogin/
@@ -292,43 +269,9 @@ export const deleteFileDoc = async (req, res) => {
     }
 };
 
-// GET /getExpediente/:IdDormi — bridge CONTENIDO (DEPRECATED — REMOVE D2-C).
-// PRECEPTOR only; dorm resuelto server-side; :IdDormi debe coincidir con el dorm del actor (sin dorm=5).
-export const getExpedientesAlumnos = async (req, res) => {
-    try {
-        const actor = await findUserById(req.user.id);
-        if (!actor) return res.status(404).json({ message: 'Usuario no encontrado', code: 'USER_NOT_FOUND' });
-        if (actor.TipoUser !== 'PRECEPTOR') return res.status(403).json({ message: 'Solo un preceptor puede revisar', code: 'FORBIDDEN_DOCUMENT_REVIEWER' });
-        if (actor.Dormitorio == null || Number(req.params.IdDormi) !== Number(actor.Dormitorio)) {
-            return res.status(403).json({ message: 'Fuera de tu dormitorio', code: 'FORBIDDEN_DOCUMENT_SCOPE' });
-        }
-        const expedientes = await findExpedientesByDormitorio(actor.Dormitorio);
-        if (expedientes.length === 0) return res.status(404).json({ message: 'No se encontraron expedientes', code: 'DOC_NOT_FOUND' });
-        return res.json(expedientes);
-    } catch (error) { console.error('Error en getExpedientesAlumnos (bridge):', error); res.status(500).json({ message: 'Error', code: 'SERVER_ERROR' }); }
-};
-
-// GET /getArchivos/:Dormitorio/... — bridge CONTENIDO (DEPRECATED — REMOVE D2-C).
-// PRECEPTOR only; el filtro de dormitorio se FUERZA al dorm del actor (el :Dormitorio del path se ignora
-// para autorización y se valida que coincida; sin dorm=5). Nombre/Apellidos/Matricula siguen como filtro.
-export const getArchivosAlumno = async (req, res) => {
-    try {
-        const actor = await findUserById(req.user.id);
-        if (!actor) return res.status(404).json({ message: 'Usuario no encontrado', code: 'USER_NOT_FOUND' });
-        if (actor.TipoUser !== 'PRECEPTOR') return res.status(403).json({ message: 'Solo un preceptor puede revisar', code: 'FORBIDDEN_DOCUMENT_REVIEWER' });
-        if (actor.Dormitorio == null || Number(req.params.Dormitorio) !== Number(actor.Dormitorio)) {
-            return res.status(403).json({ message: 'Fuera de tu dormitorio', code: 'FORBIDDEN_DOCUMENT_SCOPE' });
-        }
-        const archivos = await findArchivosFiltered({
-            dormitorio: actor.Dormitorio,
-            nombre: req.params.Nombre,
-            apellidos: req.params.Apellidos,
-            matricula: req.params.Matricula
-        });
-        if (archivos.length === 0) return res.status(404).json({ message: 'No se encontraron expedientes', code: 'DOC_NOT_FOUND' });
-        return res.json(archivos);
-    } catch (error) { console.error('Error en getArchivosAlumno (bridge):', error); res.status(500).json({ message: 'Error', code: 'SERVER_ERROR' }); }
-};
+// RETIRADOS (Task 7.3 D2-C): getExpedientesAlumnos (GET /getExpediente/:IdDormi) y getArchivosAlumno
+// (GET /getArchivos/...) ELIMINADOS → 404. Reemplazo: GET /documents/review/students y
+// GET /documents/review/students/:idLogin/documents (Bearer PRECEPTOR + dorm/scope server-side).
 
 // RETIRADO (Task 7.3 D1-A): aprobarDocumento / PUT /statusRevision/:Id fue ELIMINADO (0 consumidores
 // Flutter; aprobación anónima). No hay operación pública de APROBAR (Flutter solo rechaza).

@@ -498,8 +498,9 @@ Mismos fields que el POST. Reemplaza el archivo (borra el viejo del disco), rese
 
 ### Consulta
 
-> **Task 7.3 D2-A**: todas estas lecturas exigen **Bearer** y son server-authoritative (ownership/scope).
-> Los cuatro `GET /doctos*`/`getExpediente`/`getArchivos` son **bridges DEPRECATED (REMOVE D2-C)**.
+> **Task 7.3 D2 (CLOSED)**: todas las lecturas exigen **Bearer** y son server-authoritative. Los binarios
+> se sirven SOLO por `GET /files/:idDoctos` (`Doctos.Archivo` = path interno ≠ URL pública; el id externo es
+> `IdDoctos`). Los bridges GET legacy fueron **RETIRADOS (D2-C)** → 404.
 
 | Endpoint | Respuesta 200 |
 |---|---|
@@ -508,10 +509,10 @@ Mismos fields que el POST. Reemplaza el archivo (borra el viejo del disco), rese
 | `GET /documents/review/students/:idLogin/documents` 🔒 | **(NUEVO)** PRECEPTOR. Mismo array que `/me/documents` para un alumno de **su** dorm (por `IdLogin`). |
 | `GET /users/:idLogin/profile-photo` 🔒 | **(NUEVO)** `{ IdDoctos, IdDocumento: 6, Archivo }`. Política SELF/PRECEPTOR(mismo dorm)/CHECKER(grant). `IdDocumento=6` forzado. |
 | `GET /files/:idDoctos` 🔒 | **(NUEVO 7.3 D2-B2)** **Bytes** del binario (no JSON). `Content-Type` pdf/png/jpeg; `Content-Disposition: inline`; `Cache-Control: private, no-store`. Política por `IdDocumento`: privados (1-4,5,7) → SELF/PRECEPTOR mismo dorm; foto (6) → +CHECKER con grant. Errores JSON `{message,code}`: 401/403/404 `FILE_NOT_FOUND`/400. |
-| `GET /doctosProfile/:id?IdDocumento=6` 🔒 | **(bridge foto)** `{ IdDoctos, IdDocumento: 6, Archivo }`. Solo `IdDocumento=6` (otro/ausente → 403). Misma política que profile-photo. |
-| `GET /doctos/:Id` 🔒 | **(bridge SELF)** `:Id` debe ser el token (si no 403 `FORBIDDEN_OWNERSHIP`). Mismo array que `/me/documents`. |
-| `GET /getExpediente/:IdDormi` 🔒 | **(bridge)** PRECEPTOR; dorm forzado al del token. `[ { Matricula, Nombre, Apellidos } ]`. `:IdDormi≠dorm` → 403. **Sin `dorm=5`**. Error ahora `500` (antes `580`). |
-| `GET /getArchivos/:Dormitorio/:Nombre?/:Apellidos?/:Matricula?` 🔒 | **(bridge)** PRECEPTOR; dorm forzado al del token; `:Dormitorio≠dorm` → 403. Filtro por nombre/apellidos/matrícula. **Sin `dorm=5`**. |
+| ~~`GET /doctosProfile/:id`~~ | **RETIRADO (D2-C)** → 404. |
+| ~~`GET /doctos/:Id`~~ | **RETIRADO (D2-C)** → 404. |
+| ~~`GET /getExpediente/:IdDormi`~~ | **RETIRADO (D2-C)** → 404. |
+| ~~`GET /getArchivos/:Dormitorio/...`~~ | **RETIRADO (D2-C)** → 404. |
 
 ### Revisión
 
