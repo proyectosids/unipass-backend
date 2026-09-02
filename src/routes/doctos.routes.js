@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { verifyToken } from "../Middleware/verifityToken.js";
-import { deleteFileDoc, getDocumentsByUser, saveDocument, getProfile, uploadProfile, getExpedientesAlumnos, getArchivosAlumno, rejectDocumentByIdDoctos, getMyDocuments, getReviewStudents, getReviewStudentDocuments, getProfilePhoto } from "../controllers/doctos.controller.js";
+import { deleteFileDoc, getDocumentsByUser, saveDocument, getProfile, uploadProfile, getExpedientesAlumnos, getArchivosAlumno, rejectDocumentByIdDoctos, getMyDocuments, getReviewStudents, getReviewStudentDocuments, getProfilePhoto, getFileByIdDoctos } from "../controllers/doctos.controller.js";
 import { Subirimagen } from "../Middleware/storage.js";
 import multer from "multer";
 
@@ -19,6 +19,11 @@ router.get("/documents/review/students/:idLogin/documents", verifyToken, getRevi
 
 // Foto de perfil (IdDocumento=6, server-side): política SELF / PRECEPTOR(mismo dorm) / CHECKER(grant vigente).
 router.get("/users/:idLogin/profile-photo", verifyToken, getProfilePhoto);
+
+// Task 7.3 D2-B2: entrega AUTENTICADA de binarios documentales por PK. Bearer; identifica por IdDoctos;
+// política por IdDocumento (foto=6 admite CHECKER; privados solo SELF/PRECEPTOR mismo dorm); anti path
+// traversal; stream inline; sin redirect a /uploads. Contrato para Flutter D2-B3.
+router.get("/files/:idDoctos", verifyToken, getFileByIdDoctos);
 
 // ===== Bridges legacy CONTENIDOS (DEPRECATED — REMOVE D2-C). Ahora exigen Bearer + ownership/scope. =====
 

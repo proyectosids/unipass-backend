@@ -242,6 +242,16 @@ export const findProfilePhoto = (idLogin) =>
         return result.recordset[0] || null;
     });
 
+// Task 7.3 D2-B2: documento por PK (IdDoctos) para la entrega autenticada de binarios. Allowlist mínima
+// (dueño + tipo + ruta) para decidir autorización server-side; sin SELECT *. null si no existe la fila.
+export const findDocumentFileByIdDoctos = (idDoctos) =>
+    withConnection(async (pool) => {
+        const result = await pool.request()
+            .input('id', sql.Int, idDoctos)
+            .query("SELECT IdDoctos, IdLogin, IdDocumento, Archivo FROM UNIPASS.Doctos WHERE IdDoctos = @id");
+        return result.recordset[0] || null;
+    });
+
 export const findExpedientesByDormitorio = (idDormitorio) =>
     withConnection(async (pool) => {
         const result = await pool

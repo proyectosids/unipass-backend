@@ -103,6 +103,7 @@ Contrato OTP externo en [otp-service-contract.md](otp-service-contract.md).
 | GET | `/documents/review/students` | 🔒 | **7.3 D2-A**: alumnos del dorm del PRECEPTOR (dorm server-side). |
 | GET | `/documents/review/students/:idLogin/documents` | 🔒 | **7.3 D2-A**: docs de un alumno de SU dorm (PRECEPTOR). |
 | GET | `/users/:idLogin/profile-photo` | 🔒 | **7.3 D2-A**: foto de perfil (IdDocumento=6). SELF / PRECEPTOR(mismo dorm) / CHECKER(grant). |
+| GET | `/files/:idDoctos` | 🔒 | **7.3 D2-B2**: descarga/stream del **binario** por PK. Política por IdDocumento (foto=6 admite CHECKER; privados 1-5/7 solo SELF/PRECEPTOR mismo dorm). Anti path-traversal; `inline`; `Cache-Control: private, no-store`; sin redirect a `/uploads`. |
 | GET | `/doctosProfile/:id?IdDocumento=6` | 🔒 | **7.3 D2-A (bridge, DEPRECATED D2-C)**: solo foto (IdDocumento=6); misma política que `/users/:idLogin/profile-photo`. |
 | GET | `/doctos/:Id` | 🔒 | **7.3 D2-A (bridge, DEPRECATED D2-C)**: SELF-only (`:Id`=token → si no 403). |
 | GET | `/getExpediente/:IdDormi` | 🔒 | **7.3 D2-A (bridge, DEPRECATED D2-C)**: PRECEPTOR; dorm forzado al del token (sin `dorm=5`). |

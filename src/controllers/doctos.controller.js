@@ -14,37 +14,28 @@ import {
     rejectDocumentTx,
     findRejectNotificationContext,
     findReviewStudentsByDorm,
-    findProfilePhoto
+    findProfilePhoto,
+    findDocumentFileByIdDoctos
 } from '../repositories/doctos.repo.js';
 import { findUserById } from '../repositories/user.repo.js';
-import { findActiveGrantByTipo } from '../repositories/checkerGrant.repo.js';
 import { deleteUploadedFile } from '../util/fileStorage.js';
 import { emitToUser } from '../util/socketHelpers.js';
 import { notifyDocumentRejection } from '../util/notifications.js';
+import { authorizeDocumentRead, PROFILE_PHOTO_DOC } from '../services/documentAccess.service.js';
+import { resolveUploadPath, mimeForFile } from '../util/secureFilePath.js';
+import fs from 'node:fs';
+import path from 'node:path';
 
 // Task 7.3 D1-A: el revisor documental normal es ÚNICAMENTE TipoUser='PRECEPTOR' (decisión fijada:
 // EMPLEADO/VIGILANCIA/ADMINISTRATIVO NO se autorizan por defecto; la permisividad legacy no es política).
 
 // ===== Task 7.3 D2-A: lecturas documentales server-authoritative (BOLA/IDOR) =====
 
-// Política de FOTO DE PERFIL (IdDocumento=6): SELF; PRECEPTOR del mismo dormitorio; o CHECKER con grant
-// vigente que cubra el dorm del target (Dormitorio del dorm, o Caseta global). Nunca global por TipoUser.
-const puedeVerFotoPerfil = async (req, targetIdLogin) => {
-    if (Number(targetIdLogin) === Number(req.user.id)) return true; // SELF
-    const target = await findUserById(targetIdLogin);
-    if (!target || target.TipoUser !== 'ALUMNO') return false; // solo fotos de alumnos son revisables
-    const actor = await findUserById(req.user.id);
-    if (!actor) return false;
-    if (actor.TipoUser === 'PRECEPTOR') {
-        return actor.Dormitorio != null && Number(actor.Dormitorio) === Number(target.Dormitorio);
-    }
-    // CHECKER: grant vigente Dormitorio del dorm del target, o Caseta (global). Nunca scope del cliente.
-    const gDorm = target.Dormitorio != null ? await findActiveGrantByTipo(req.user.id, 'Dormitorio', target.Dormitorio) : null;
-    if (gDorm && gDorm.Capability === 'CHECKER') return true;
-    const gCaseta = await findActiveGrantByTipo(req.user.id, 'Caseta');
-    if (gCaseta && gCaseta.Capability === 'CHECKER') return true;
-    return false;
-};
+// Política de FOTO DE PERFIL (IdDocumento=6): delega en la política documental ÚNICA
+// (documentAccess.service): SELF; PRECEPTOR del mismo dormitorio; o CHECKER con grant vigente. Se pasa un
+// documento sintético con IdDocumento=6 para reutilizar exactamente la misma decisión que /files/:idDoctos.
+const puedeVerFotoPerfil = (req, targetIdLogin) =>
+    authorizeDocumentRead(req.user.id, { IdLogin: targetIdLogin, IdDocumento: PROFILE_PHOTO_DOC });
 
 const servirFotoPerfil = async (res, targetId) => {
     const photo = await findProfilePhoto(targetId);
@@ -118,6 +109,55 @@ export const getDocumentsByUser = async (req, res) => {
         if (documents.length === 0) return res.status(404).json({ message: 'No se encontraron archivos', code: 'DOC_NOT_FOUND' });
         return res.json(documents);
     } catch (error) { console.error('Error en /doctos/:Id (bridge):', error); res.status(500).json({ message: 'Error', code: 'SERVER_ERROR' }); }
+};
+
+// ===== Task 7.3 D2-B2: entrega AUTENTICADA de binarios documentales por IdDoctos =====
+// GET /files/:idDoctos (Bearer). El recurso se identifica por PK (IdDoctos); el filename/Archivo/IdLogin/
+// IdDocumento/scope NUNCA vienen del cliente. Pipeline: Bearer -> IdDoctos -> Doctos -> política -> ruta
+// segura (anti traversal) -> stream. No redirige a /uploads ni revela paths físicos.
+export const getFileByIdDoctos = async (req, res) => {
+    try {
+        const idDoctos = Number(req.params.idDoctos);
+        if (!Number.isInteger(idDoctos) || idDoctos <= 0) {
+            return res.status(400).json({ message: 'idDoctos invalido', code: 'MISSING_FIELDS' });
+        }
+
+        const doc = await findDocumentFileByIdDoctos(idDoctos);
+        if (!doc) return res.status(404).json({ message: 'Documento no encontrado', code: 'FILE_NOT_FOUND' });
+
+        // Autorización por IdDocumento (foto=6 admite CHECKER; privados solo SELF/PRECEPTOR mismo dorm).
+        const allowed = await authorizeDocumentRead(req.user.id, doc);
+        if (!allowed) return res.status(403).json({ message: 'No autorizado para este documento', code: 'FORBIDDEN_DOCUMENT_SCOPE' });
+
+        // Solo DESPUÉS de autorizar se toca el filesystem, y con resolución confinada a UPLOAD_ROOT.
+        const absPath = resolveUploadPath(doc.Archivo);
+        const mime = absPath ? mimeForFile(absPath) : null;
+        if (!absPath || !mime) return res.status(404).json({ message: 'Archivo no encontrado', code: 'FILE_NOT_FOUND' });
+
+        // Existencia física: la fila puede existir sin binario en disco -> 404 controlado (sin path/stack).
+        let stat;
+        try { stat = await fs.promises.stat(absPath); }
+        catch { return res.status(404).json({ message: 'Archivo no encontrado', code: 'FILE_NOT_FOUND' }); }
+        if (!stat.isFile()) return res.status(404).json({ message: 'Archivo no encontrado', code: 'FILE_NOT_FOUND' });
+
+        const safeName = path.basename(absPath).replace(/[^\w.\-]/g, '_'); // filename numérico; se sanea igual
+        res.setHeader('Content-Type', mime);
+        res.setHeader('Content-Length', stat.size);
+        res.setHeader('Content-Disposition', `inline; filename="${safeName}"`); // inline para render (img/pdf)
+        res.setHeader('Cache-Control', 'private, no-store'); // documentación sensible (INE, etc.): no cachear
+        res.setHeader('Pragma', 'no-cache');
+
+        const stream = fs.createReadStream(absPath);
+        stream.on('error', () => {
+            if (!res.headersSent) res.status(500).json({ message: 'Error al leer el archivo', code: 'SERVER_ERROR' });
+            else res.destroy();
+        });
+        stream.pipe(res);
+    } catch (error) {
+        // No se loguean bytes/paths/secretos: solo el IdDoctos y el mensaje técnico.
+        console.error('Error en getFileByIdDoctos: idDoctos=', req.params?.idDoctos, '-', error.message);
+        if (!res.headersSent) res.status(500).json({ message: 'Error', code: 'SERVER_ERROR' });
+    }
 };
 
 export const saveDocument = async (req, res) => {

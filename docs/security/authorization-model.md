@@ -597,3 +597,68 @@ Se conservan por compatibilidad Flutter, pero ahora exigen Bearer + ownership/sc
 **Estado: `D2-A Backend read containment = DONE`** (0 lecturas documentales anónimas por la API; contratos
 server-authoritative; foto de perfil sin capability nueva; sin `SELECT *`). **`Task 7.3` = NOT CLOSED**
 (pendiente `DIRECT_FILE_ACCESS_BYPASS` y **D2-C** retiro de bridges tras migración Flutter D2-B).
+
+# Task 7.3 — D2-B2: Secure File Delivery por IdDoctos → `D2-B2 Secure File Delivery Backend = DONE`
+
+Crea la superficie **autenticada** definitiva para descargar/renderizar binarios documentales, sin abrir el
+bypass. Flutter D2-B1 (`ac02885`) ya migró las lecturas JSON y extrajo `FILE_BINARY_CONSUMER_MAP`; ahora el
+identificador de acceso al binario es **`IdDoctos`** (no el filename).
+
+## Endpoint `GET /files/:idDoctos` (Bearer)
+
+```text
+Bearer → req.user.id → IdDoctos → Doctos(owner,IdDocumento,Archivo) → política → ruta segura → stream
+```
+
+- **Identificado por PK.** No existe `GET /files/:filename`. **No** se acepta como autoridad: `filename`,
+  `Archivo`, `IdLogin`, `IdDocumento`, `dormitorio`, `matrícula` ni `scope` desde el cliente.
+- **Repo `findDocumentFileByIdDoctos`**: allowlist `{IdDoctos, IdLogin, IdDocumento, Archivo}` (sin `SELECT *`).
+  Fila inexistente → `404 FILE_NOT_FOUND` (sin revelar paths).
+- **Política por `IdDocumento` (única, compartida con la foto D2-A — `services/documentAccess.service.js`
+  `authorizeDocumentRead`):**
+  - **Privados** (reglamentos 1-4, convenio 5, INE Tutor 7): **SELF** o **PRECEPTOR del mismo dormitorio**
+    (dorm server-side). Denegado a ALUMNO ajeno, EMPLEADO, VIGILANCIA, **CHECKER** y PRECEPTOR de otro dorm.
+  - **Foto de perfil** (`IdDocumento=6`): SELF / PRECEPTOR mismo dorm / **CHECKER** con `CheckerGrant`
+    vigente (Dormitorio del dorm, o Caseta global). Sin capability nueva; scope nunca del cliente.
+  - **CHECKER solo foto:** un grant que abre la foto **no** abre reglamento/convenio/INE del mismo alumno
+    (test obligatorio: `GET /files/<foto 6>` → 200, `GET /files/<INE 7>` → 403).
+- **Path traversal (`util/secureFilePath.js`, testeable):** `Archivo` de BD se usa **solo tras autorizar**,
+  vía `resolveUploadPath` — normaliza, exige nombre simple (sin `/ \ .. \0`), extensión en allowlist
+  (jpg/jpeg/png/pdf) y confina el canónico dentro de `UPLOAD_ROOT`. Rechaza `../../etc/passwd`,
+  `/uploads/../../secret`, paths absolutos externos, etc. **Nunca** `request → filename → filesystem`.
+- **Existencia física:** fila sin binario en disco → `404 FILE_NOT_FOUND` controlado (sin `500`/stack/path).
+- **Headers:** `Content-Type` derivado del archivo almacenado (allowlist, no del request) + `Content-Length`;
+  `Content-Disposition: inline` (render de img/pdf; filename saneado); `Cache-Control: private, no-store` +
+  `Pragma: no-cache` (documentación sensible, sin CDN público). **No** token en URL. **No** redirect `302`
+  a `/uploads`: se hace **stream** desde el propio endpoint. La respuesta son **bytes**, nunca JSON con path.
+- **Logs:** solo `IdDoctos` + mensaje técnico; nunca bytes/paths/JWT/TokenCFM.
+
+## Metadata existente (sin cambios en esta fase)
+
+`/me/documents`, `/documents/review/...` y `/users/:idLogin/profile-photo` **siguen** devolviendo `Archivo`
+por compatibilidad. D2-B3 dejará de usar `Archivo` para el binario y pasará a `GET /files/:idDoctos`.
+
+## Estado del bypass y propuesta EXACTA para D2-C
+
+```text
+Secure authenticated file endpoint = DONE
+Flutter binary migration           = READY (contrato flutter-contract-7.3-d2b3.md)
+DIRECT_FILE_ACCESS_BYPASS          = STILL OPEN
+```
+
+`app.js:31` `app.use(express.static('public'))` **sigue vivo** (Flutter pre-D2-B3 aún usa `/uploads/*`).
+**Auditoría de estructura real:** `public/` contiene **solo** `public/uploads/` y un `public/.gitignore`
+(no hay otros assets públicos legítimos). Por tanto la **propuesta concreta D2-C** (tras migración Flutter
+D2-B3) es:
+
+- **Eliminar** la línea `app.use(express.static('public'))` (no queda nada público legítimo que servir);
+  el único acceso a binarios será `GET /files/:idDoctos`. **No** se requiere conservar `express.static`.
+- Alternativa equivalente si en el futuro `public/` alojara assets públicos: montar `express.static` sobre
+  un subdirectorio de assets y **nunca** sobre `public/uploads` (p. ej. `express.static('public/assets')`),
+  dejando `uploads` fuera del static.
+- Verificación de cierre D2-C: `GET /uploads/<archivo>` directo (sin Bearer) → `404`.
+
+**`Task 7.3` = NOT CLOSED** (bypass STILL OPEN hasta D2-B3 + D2-C). **Riesgos residuales de esta fase:**
+(1) el binario sigue accesible por `/uploads/*` sin auth hasta D2-C — **aceptado temporalmente y explícito**;
+(2) `flutter_cached_pdfview` cachea el PDF en disco del dispositivo tras descargarlo autenticado (fuera del
+control del backend; se documenta para D2-B3).

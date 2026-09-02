@@ -319,6 +319,7 @@ Subida con Multer a `public/uploads/` (nombre = timestamp + extensión). Tipos p
 | `GET /documents/review/students` 🔒 | **7.3 D2-A**: alumnos del **dorm del PRECEPTOR** (resuelto server-side; **sin `dorm=5`**). Solo `TipoUser='PRECEPTOR'` (403 `FORBIDDEN_DOCUMENT_REVIEWER`). Respuesta mínima `{ IdLogin, Nombre, Apellidos, Matricula }`. |
 | `GET /documents/review/students/:idLogin/documents` 🔒 | **7.3 D2-A**: documentos de un alumno de **SU dorm** (PRECEPTOR). Target por **IdLogin**; no-ALUMNO → 404; otro dorm → 403 `FORBIDDEN_DOCUMENT_SCOPE`. |
 | `GET /users/:idLogin/profile-photo` 🔒 | **7.3 D2-A**: foto de perfil (`IdDocumento=6` **forzado**). Política: **SELF** / **PRECEPTOR** mismo dorm / **CHECKER** con grant vigente (`CheckerGrant` Dormitorio o Caseta). Sin capability nueva; scope nunca del cliente. |
+| `GET /files/:idDoctos` 🔒 | **7.3 D2-B2**: entrega **autenticada** del binario por PK. Política ÚNICA por `IdDocumento` (`documentAccess.service`): **privados** (reglamentos 1-4, convenio 5, INE 7) → SELF o PRECEPTOR mismo dorm; **foto** (6) → + CHECKER con grant. Un checker que ve la foto **no** abre privados (403). Anti path-traversal (`secureFilePath`), MIME del archivo (no del request), `inline`, `Cache-Control: private, no-store`, **sin** redirect a `/uploads`, **sin** token en URL. Errores 401/403/404 (`FILE_NOT_FOUND`)/400. |
 | `GET /doctosProfile/:id?IdDocumento=6` 🔒 | **7.3 D2-A (bridge, DEPRECATED — REMOVE D2-C)**: solo foto (`IdDocumento=6`; otro/ausente → 403). Misma política que `/users/:idLogin/profile-photo`. |
 | `GET /doctos/:Id` 🔒 | **7.3 D2-A (bridge, DEPRECATED — REMOVE D2-C)**: **SELF-only** (`:Id` debe ser el token, si no 403 `FORBIDDEN_OWNERSHIP`). 404 si no hay docs. |
 | `GET /getExpediente/:IdDormi` 🔒 | **7.3 D2-A (bridge, DEPRECATED — REMOVE D2-C)**: PRECEPTOR; dorm **forzado** al del token; `:IdDormi` debe coincidir (si no 403 `FORBIDDEN_DOCUMENT_SCOPE`). **Sin `dorm=5`**. |
@@ -377,11 +378,13 @@ se limpia `TokenCFM` del usuario automáticamente. Sin `PUSH_API_URL`, el push s
 3. `POST /permission` resta 6 h fijas a las fechas (no maneja DST ni otras zonas).
 4. ~~`GET /getExpediente/:IdDormi` responde `580`~~ **CORREGIDO (7.3 D2-A)**: ahora `500` con `{ code }`.
 5. `db.sql` está desactualizado respecto a la BD real (`LoginUniPass` es la fuente de verdad).
-6. **`DIRECT_FILE_ACCESS_BYPASS` (ABIERTO, bloquea `Task 7.3 CLOSED`)**: `app.js:31`
-   `express.static('public')` sirve `public/uploads/*` **sin autenticación**. Proteger los `GET`
-   de la API (D2-A) **no** protege el binario: conocido el nombre de archivo (`Doctos.Archivo`),
-   se descarga sin token. Propuesta: endpoint autenticado `GET /files/:id` con la política documental,
-   o almacenamiento privado con URL firmada. Ver `docs/security/authorization-model.md` (§ D2-A).
+6. **`DIRECT_FILE_ACCESS_BYPASS` (STILL OPEN, bloquea `Task 7.3 CLOSED`)**: `app.js:31`
+   `express.static('public')` sirve `public/uploads/*` **sin autenticación**. **D2-B2 (DONE)** ya creó la
+   superficie autenticada `GET /files/:idDoctos` (stream por PK, política documental, anti path-traversal);
+   pero el static **sigue vivo** por compatibilidad con Flutter pre-D2-B3. **D2-C** (tras migración Flutter
+   D2-B3) eliminará `express.static('public')` — `public/` solo contiene `uploads/`, así que no queda nada
+   público legítimo que servir. Cierre verificable: `GET /uploads/<archivo>` → `404`. Ver
+   `docs/security/authorization-model.md` (§ D2-B2) y `flutter-contract-7.3-d2b3.md`.
 6. CORS totalmente abierto y body limit de 50 MB global.
 7. `GET /userChecks/:EmailAsignador` es legado del modelo DEPARTAMENTO; se retirará al terminar la
    migración del cliente (fase 2b: borrado de cuentas 2035/2063, pendiente).
