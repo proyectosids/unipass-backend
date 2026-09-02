@@ -2,9 +2,11 @@
    UNIPASS — Script de creación completo
    Base de datos:  UNIPASS
    Esquema:        UNIPASS   (tablas referenciadas como UNIPASS.<Tabla>)
-   Contenido:      15 tablas, constraints, índices, descripciones (MS_Description)
-                   y datos semilla (catálogos) necesarios para que la app arranque.
-   Idempotente a nivel de BD/esquema; las tablas se crean si no existen.
+   Contenido:      15 tablas, constraints, índices, descripciones (MS_Description),
+                   datos semilla (catálogos) y DATOS PILOTO de prueba (sección 7).
+   Idempotente a nivel de BD/esquema; las tablas se crean si no existen. Los datos
+   PILOTO (usuarios/documentos sintéticos) solo se insertan si la BD está VACÍA
+   (LoginUniPass sin filas) -> ejecutar sobre una BD real NO inserta nada de eso.
    Ejecutar con SSMS o:  node scripts/run-sql.js database/schema/UNIPASS_full_schema.sql
    ============================================================================= */
 
@@ -432,6 +434,70 @@ INSERT INTO UNIPASS.Configuracion (Clave, Valor, Descripcion) VALUES
 IF NOT EXISTS (SELECT 1 FROM UNIPASS.Configuracion WHERE Clave='COORDINADOR_NODEPTO')
 INSERT INTO UNIPASS.Configuracion (Clave, Valor, Descripcion) VALUES
  ('COORDINADOR_NODEPTO','','Override NoDepto del coordinador; vacio = auto (Bedroom del coordinador)');
+GO
+
+/* =============================================================================
+   7. DATOS PILOTO  (cuentas/documentos de PRUEBA para el smoke con Flutter)
+   -----------------------------------------------------------------------------
+   ⚠️ Datos SINTÉTICOS de desarrollo (no son personas reales). TODO el bloque se
+      OMITE si LoginUniPass ya tiene usuarios -> NUNCA contamina una BD real.
+   🔑 Contraseña de TODAS las cuentas piloto: "piloto123" (hash bcrypt embebido).
+      Cámbiala/retírala antes de cualquier despliegue real.
+   📁 Los Archivo apuntan a /uploads/pilot_*.<ext>. La metadata existe, pero el
+      BINARIO no: GET /files/:idDoctos dará 404 (FILE_NOT_FOUND) hasta que subas
+      el archivo por la app (POST /doctosMul) o dejes un placeholder con ese
+      nombre en public/uploads. Login y lecturas de metadata funcionan igual.
+   ============================================================================= */
+IF NOT EXISTS (SELECT 1 FROM UNIPASS.LoginUniPass)
+BEGIN
+    /* --- Usuarios piloto (IdLogin explícito para referenciarlos abajo) --- */
+    SET IDENTITY_INSERT UNIPASS.LoginUniPass ON;
+    INSERT INTO UNIPASS.LoginUniPass
+        (IdLogin, Matricula, [Contraseña], Correo, Nombre, Apellidos, TipoUser, Sexo, FechaNacimiento, Celular, StatusActividad, Dormitorio, Documentacion)
+    VALUES
+        -- ALUMNO estrella: dorm 4 (UNIVERSITARIO, M); expediente COMPLETO [1,5,7] + foto(6)
+        (1,'PILALU01','$2b$10$KRW.arKtGOJQYNjYtZNgR.donhuCiEZ0mqh.G.lt9RVOebrf1.v8e','pilalu01@pilot.local','Diego','Alumno Piloto','ALUMNO','M','2003-01-01','9610000001',1,4,1),
+        -- PRECEPTOR del dorm 4 (revisa a PILALU01/PILALU02)
+        (2,'PILPRE04','$2b$10$KRW.arKtGOJQYNjYtZNgR.donhuCiEZ0mqh.G.lt9RVOebrf1.v8e','pilpre04@pilot.local','Pablo','Preceptor Piloto','PRECEPTOR','M','1985-01-01','9610000002',1,4,NULL),
+        -- CHECKER/VIGILANCIA con CheckerGrant Caseta (global) -> ve foto(6) de cualquier alumno
+        (3,'PILCHK01','$2b$10$KRW.arKtGOJQYNjYtZNgR.donhuCiEZ0mqh.G.lt9RVOebrf1.v8e','pilchk01@pilot.local','Carlos','Checador Piloto','VIGILANCIA','M','1985-01-01','9610000003',1,NULL,NULL),
+        -- ADMINISTRATIVO (coordinador de salidas 2/3 si se cambia el switch AUTORIZADOR_SALIDAS)
+        (4,'PILADM01','$2b$10$KRW.arKtGOJQYNjYtZNgR.donhuCiEZ0mqh.G.lt9RVOebrf1.v8e','piladm01@pilot.local','Teresa','Coordinadora Piloto','ADMINISTRATIVO','F','1980-01-01','9610000004',1,5,NULL),
+        -- ALUMNO 2: dorm 4; expediente INCOMPLETO con un documento RECHAZADO (caso de revisión)
+        (5,'PILALU02','$2b$10$KRW.arKtGOJQYNjYtZNgR.donhuCiEZ0mqh.G.lt9RVOebrf1.v8e','pilalu02@pilot.local','Mateo','Alumno Piloto','ALUMNO','M','2004-01-01','9610000005',1,4,0),
+        -- ALUMNO 3: dorm 2 (UNIVERSITARIO, F); COMPLETO [3,5,7] -> aislamiento cross-dorm
+        (6,'PILALU03','$2b$10$KRW.arKtGOJQYNjYtZNgR.donhuCiEZ0mqh.G.lt9RVOebrf1.v8e','pilalu03@pilot.local','Ana','Alumna Piloto','ALUMNO','F','2003-01-01','9610000006',1,2,1),
+        -- PRECEPTOR del dorm 2 (NO debe ver documentos del dorm 4)
+        (7,'PILPRE02','$2b$10$KRW.arKtGOJQYNjYtZNgR.donhuCiEZ0mqh.G.lt9RVOebrf1.v8e','pilpre02@pilot.local','Laura','Preceptora Piloto','PRECEPTOR','F','1985-01-01','9610000007',1,2,NULL);
+    SET IDENTITY_INSERT UNIPASS.LoginUniPass OFF;
+
+    /* --- Expedientes piloto (Doctos) --- */
+    -- PILALU01 (dorm 4 UNIVERSITARIO M -> requeridos 1,5,7): completo + foto
+    INSERT INTO UNIPASS.Doctos (IdDocumento, Archivo, StatusDoctos, IdLogin, StatusRevision) VALUES
+        (1,'/uploads/pilot_alu1_reglamento_hvu.pdf','Adjunto',1,'Aprobado'),
+        (5,'/uploads/pilot_alu1_convenio.pdf','Adjunto',1,'Aprobado'),
+        (7,'/uploads/pilot_alu1_ine_tutor.pdf','Adjunto',1,'Aprobado'),
+        (6,'/uploads/pilot_alu1_foto.png','Adjunto',1,'Pendiente');
+    -- PILALU03 (dorm 2 UNIVERSITARIO F -> requeridos 3,5,7): completo + foto
+    INSERT INTO UNIPASS.Doctos (IdDocumento, Archivo, StatusDoctos, IdLogin, StatusRevision) VALUES
+        (3,'/uploads/pilot_alu3_reglamento_hsu.pdf','Adjunto',6,'Aprobado'),
+        (5,'/uploads/pilot_alu3_convenio.pdf','Adjunto',6,'Aprobado'),
+        (7,'/uploads/pilot_alu3_ine_tutor.pdf','Adjunto',6,'Aprobado'),
+        (6,'/uploads/pilot_alu3_foto.png','Adjunto',6,'Pendiente');
+    -- PILALU02 (dorm 4): foto + un reglamento RECHAZADO (para probar la bandeja de revisión)
+    INSERT INTO UNIPASS.Doctos (IdDocumento, Archivo, StatusDoctos, IdLogin, StatusRevision) VALUES
+        (6,'/uploads/pilot_alu2_foto.png','Adjunto',5,'Pendiente');
+    INSERT INTO UNIPASS.Doctos (IdDocumento, Archivo, StatusDoctos, IdLogin, StatusRevision, MotivoRechazo, ComentarioRechazo, RechazadoPor, FechaRechazo) VALUES
+        (1,'/uploads/pilot_alu2_reglamento_hvu.pdf','Adjunto',5,'Rechazado','DOCUMENTO_ILEGIBLE','Reenvía el reglamento escaneado completo','PILPRE04',GETDATE());
+
+    /* --- CheckerGrant piloto: PILCHK01 = CHECKER global (Caseta), otorgado por el preceptor dorm 4 --- */
+    INSERT INTO UNIPASS.CheckerGrant (IdLogin, Scope, AsignadoPor, Activo, Vigencia, Tipo, IdDormitorio, Capability) VALUES
+        (3,'AMBOS',2,1,'PERMANENTE','Caseta',NULL,'CHECKER');
+
+    PRINT 'UNIPASS: datos PILOTO insertados (7 usuarios, expedientes, 1 CheckerGrant). Password: piloto123';
+END
+ELSE
+    PRINT 'UNIPASS: LoginUniPass ya tiene usuarios -> datos PILOTO OMITIDOS (BD no vacía).';
 GO
 
 PRINT 'UNIPASS: esquema, tablas, descripciones y semillas aplicados.';
